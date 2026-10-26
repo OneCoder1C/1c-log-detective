@@ -1,0 +1,15 @@
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Pytest
+.pytest_cache/
+
+# Coverage
+.coverage
+htmlcov/
+
+# Generated reports
+report*.txt
+tests/test_report*.txt
