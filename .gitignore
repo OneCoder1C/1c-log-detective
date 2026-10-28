@@ -10,6 +10,25 @@ __pycache__/
 .coverage
 htmlcov/
 
-# Generated reports
+# Generated reports and analysis results
 report*.txt
+report*.html
+report*.json
+tests/test_report*.txt
+
+# 1C technological logs
+1c_logs/
+*.log
+
+# Local configuration and environment files
+.env
+.env.*
+!.env.example
+
+# Local inspection output and analysis artifacts
+inspection_output.txt
+encoding_test.txt
+lock_analysis_report.txt
+
+# Generated test reports
 tests/test_report*.txt
