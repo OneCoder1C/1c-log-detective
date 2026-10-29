@@ -32,3 +32,6 @@ lock_analysis_report.txt
 
 # Generated test reports
 tests/test_report*.txt
+
+1c_log_config/
+*.log
