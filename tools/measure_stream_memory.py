@@ -1,3 +1,8 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from pathlib import Path
 from time import perf_counter, sleep
 from threading import Thread
@@ -5,7 +10,6 @@ import psutil
 
 from techlog import iter_techlog_events, parse_event
 from report import format_summary
-
 
 log_file = max(
     Path("1c_logs").rglob("*.log"),

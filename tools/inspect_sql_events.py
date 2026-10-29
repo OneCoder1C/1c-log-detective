@@ -1,7 +1,11 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from pathlib import Path
 
 from techlog import iter_techlog_events, is_event_start
-
 
 log_file = max(
     Path("1c_logs").rglob("*.log"),

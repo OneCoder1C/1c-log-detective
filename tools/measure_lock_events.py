@@ -1,8 +1,10 @@
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from time import perf_counter
 
 from techlog import iter_techlog_events, parse_event, is_event_start
-
 
 log_file = max(
     Path("1c_logs").rglob("*.log"),

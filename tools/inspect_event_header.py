@@ -1,7 +1,11 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from pathlib import Path
 
 from techlog import iter_techlog_events, parse_event
-
 
 LOG_FILE = Path("1c_logs/1cv8c_29332/26102717.log")
 
