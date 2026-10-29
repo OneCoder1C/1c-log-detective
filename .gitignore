@@ -35,3 +35,6 @@ tests/test_report*.txt
 
 1c_log_config/
 *.log
+# Generated incident reports
+incident_report.txt
+report.txt
