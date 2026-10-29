@@ -25,6 +25,7 @@ def test_parse_shared_lock():
     assert result["thread"] == "20716"
     assert result["user"] == "DefUser"
     assert result["database"] == "ERP"
+    assert result["resource_fields"] == {"Fld2295": "0"}
 
 
 def test_parse_exclusive_lock():

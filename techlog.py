@@ -78,6 +78,17 @@ def parse_lock_event(raw_text: str) -> dict | None:
         locks,
     )
 
+    resource_fields = dict(
+        re.findall(
+            r"\b(Fld\d+)=((?:\"[^\"]*\")|(?:'[^']*')|[^\s,]+)",
+            locks,
+        )
+    )
+
+    resource_fields = {
+        key: value.strip("\"'") for key, value in resource_fields.items()
+    }
+
     return {
         "timestamp": event.timestamp,
         "level": event.level,
@@ -88,6 +99,7 @@ def parse_lock_event(raw_text: str) -> dict | None:
         "regions": fields.get("Regions", ""),
         "lock_mode": (mode_match.group(1).upper() if mode_match else "UNKNOWN"),
         "resource_id": (resource_id_match.group(1) if resource_id_match else ""),
+        "resource_fields": resource_fields,
         "context": fields.get("Context", ""),
     }
 
