@@ -1,6 +1,10 @@
 import pytest
 
-from exception_groups import get_exception_detail, normalize_exception
+from exception_groups import (
+    extract_guid,
+    get_exception_detail,
+    normalize_exception,
+)
 
 
 @pytest.mark.parametrize(
@@ -116,3 +120,15 @@ def test_count_exception_groups_separates_table_names():
 
 def test_count_exception_groups_empty():
     assert count_exception_groups([]) == {}
+
+
+def test_extract_guid_found():
+    description = "Ошибка объекта 12345678-1234-1234-1234-123456789abc"
+
+    assert extract_guid(description) == "12345678-1234-1234-1234-123456789abc"
+
+
+def test_extract_guid_not_found():
+    description = "Обычная ошибка без идентификатора"
+
+    assert extract_guid(description) is None

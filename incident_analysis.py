@@ -66,14 +66,19 @@ def build_incident_timeline(
 
     target = all_events[error_index]
 
+    target_info = {
+        "index": error_index,
+        "timestamp": target.timestamp,
+        "event_type": target.event_type,
+        "description": target.description,
+    }
+
+    if target.event_type == "EXCP":
+        target_info["exception_category"] = normalize_exception(target.description)
+
     return {
         "error": None,
-        "target": {
-            "index": error_index,
-            "timestamp": target.timestamp,
-            "event_type": target.event_type,
-            "description": target.description,
-        },
+        "target": target_info,
         "events_before": error_index - start,
         "events_after": end - error_index - 1,
         "timeline": timeline,
@@ -91,6 +96,7 @@ def format_incident_timeline(incident: dict) -> str:
         "=" * 60,
         f"Время ошибки: {target['timestamp']}",
         f"Тип события: {target['event_type']}",
+        f"Категория: {target.get('exception_category', 'Не определена')}",
         f"Описание: {target['description']}",
         "",
         "ХРОНОЛОГИЯ",
