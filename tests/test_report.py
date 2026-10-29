@@ -170,3 +170,22 @@ def test_extract_guid_returns_none_when_guid_is_missing():
     description = "Неверно указан пользователь или пароль"
 
     assert extract_guid(description) is None
+
+
+def test_format_summary_includes_exception_context():
+    raw_events = [
+        "03:16.700001-0,EXCP,2,level=WARNING,"
+        "OSThread=456,Usr=Иванов,Context=МодульСеанса,"
+        "Descr='Не удалось заблокировать запись не выполнено "
+        "'ACTIVEUSERS''",
+    ]
+
+    events = [
+        event for event in (parse_event(raw) for raw in raw_events) if event is not None
+    ]
+
+    report_text = format_summary(events)
+
+    assert "Пользователи: Иванов" in report_text
+    assert "Потоки: 456" in report_text
+    assert "Контексты: МодульСеанса" in report_text

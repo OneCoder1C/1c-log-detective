@@ -2,7 +2,7 @@ from collections import Counter
 from collections.abc import Iterable
 from pathlib import Path
 
-from techlog import TechLogEvent
+from techlog import TechLogEvent, extract_fields
 from exception_groups import (
     extract_guid,
     get_exception_detail,
@@ -56,11 +56,16 @@ def format_summary(events: Iterable[TechLogEvent]) -> str:
             description = event.description.strip()
             exceptions[description] += 1
 
+            fields = extract_fields(event.raw_text)
+
             exception_events.append(
                 {
                     "timestamp": event.timestamp,
                     "level": event.level,
                     "description": description,
+                    "user": fields.get("Usr", ""),
+                    "thread": fields.get("OSThread", ""),
+                    "context": fields.get("Context", ""),
                 }
             )
 
@@ -169,10 +174,23 @@ def format_summary(events: Iterable[TechLogEvent]) -> str:
                 "count": 0,
                 "first": item["timestamp"],
                 "last": item["timestamp"],
+                "users": set(),
+                "threads": set(),
+                "contexts": set(),
             }
 
-        exception_timeline[key]["count"] += 1
-        exception_timeline[key]["last"] = item["timestamp"]
+        stats = exception_timeline[key]
+        stats["count"] += 1
+        stats["last"] = item["timestamp"]
+
+        if item["user"]:
+            stats["users"].add(item["user"])
+
+        if item["thread"]:
+            stats["threads"].add(item["thread"])
+
+        if item["context"]:
+            stats["contexts"].add(item["context"])
 
     if exception_timeline:
         repeated_exceptions = sorted(
@@ -198,6 +216,22 @@ def format_summary(events: Iterable[TechLogEvent]) -> str:
                 f"Последнее: {stats['last']} | "
                 f"{label}"
             )
+
+            if stats["users"]:
+                lines.append(f"    Пользователи: {', '.join(sorted(stats['users']))}")
+
+            if stats["threads"]:
+                lines.append(f"    Потоки: {', '.join(sorted(stats['threads']))}")
+
+            if stats["contexts"]:
+                contexts = sorted(stats["contexts"])
+                shown_contexts = contexts[:3]
+                context_text = ", ".join(shown_contexts)
+
+                if len(contexts) > 3:
+                    context_text += f" и ещё {len(contexts) - 3}"
+
+                lines.append(f"    Контексты: {context_text}")
     else:
         lines.append("  Исключения с описанием не найдены.")
 
