@@ -38,3 +38,5 @@ tests/test_report*.txt
 # Generated incident reports
 incident_report.txt
 report.txt
+
+real_locks_output.txt
