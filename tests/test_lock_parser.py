@@ -108,3 +108,24 @@ def test_parse_lock_with_comma_inside_quoted_value():
 
     assert result is not None
     assert len(result["locks"]) == 1
+
+
+def test_parse_lock_with_additional_attributes():
+    raw_event = make_tlock(
+        "SystemSettings.SYSTEMLOCK Exclusive "
+        'ObjectKey="LogonUnited.f/Такси/НастройкиОкнаТонкогоКлиента" '
+        "SettingsKeyHash=0 UserIdHash=2244921122"
+    )
+
+    result = parse_lock_event(raw_event)
+
+    assert result is not None
+    assert len(result["locks"]) == 1
+
+    attributes = result["locks"][0]["attributes"]
+
+    assert attributes["ObjectKey"] == (
+        "LogonUnited.f/Такси/НастройкиОкнаТонкогоКлиента"
+    )
+    assert attributes["SettingsKeyHash"] == "0"
+    assert attributes["UserIdHash"] == "2244921122"

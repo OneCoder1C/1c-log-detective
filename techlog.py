@@ -112,6 +112,15 @@ def parse_lock_items(locks: str) -> list[dict]:
             key: value.strip("\"'") for key, value in resource_fields.items()
         }
 
+        attributes = dict(
+            re.findall(
+                r"\b([A-Za-z]\w*)=((?:\"[^\"]*\")|(?:'[^']*')|[^\s,]+)",
+                item,
+            )
+        )
+
+        attributes = {key: value.strip("\"'") for key, value in attributes.items()}
+
         result.append(
             {
                 "region": region_match.group(1) if region_match else "",
@@ -120,6 +129,7 @@ def parse_lock_items(locks: str) -> list[dict]:
                     resource_id_match.group(1) if resource_id_match else ""
                 ),
                 "resource_fields": resource_fields,
+                "attributes": attributes,
             }
         )
 
