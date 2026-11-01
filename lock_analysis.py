@@ -228,25 +228,24 @@ def find_lock_candidates(
         if lock_time is None:
             continue
 
-        # Положительная разница означает, что блокировка была раньше.
-        difference_ms = (target_time - lock_time) * 1000
-
         # Не учитываем блокировки, случившиеся после исключения.
-        if difference_ms < 0:
+        difference_seconds = (target_time - lock_time) % 3600
+        difference_ms = difference_seconds * 1000
+
+        if difference_ms > window_ms:
             continue
 
-        if difference_ms <= window_ms:
-            candidate = lock.copy()
-            candidate["time_difference_ms"] = round(difference_ms, 3)
+        candidate = lock.copy()
+        candidate["time_difference_ms"] = round(difference_ms, 3)
 
-            lock_regions = candidate.get("regions", "")
-            candidate["exception_resource"] = exception_resource
-            candidate["resource_match"] = (
-                bool(exception_resource)
-                and exception_resource.casefold() in lock_regions.casefold()
-            )
+        lock_regions = candidate.get("regions", "")
+        candidate["exception_resource"] = exception_resource
+        candidate["resource_match"] = (
+            bool(exception_resource)
+            and exception_resource.casefold() in lock_regions.casefold()
+        )
 
-            candidates.append(candidate)
+        candidates.append(candidate)
 
     return sorted(
         candidates,

@@ -189,6 +189,27 @@ def test_find_lock_candidates_across_minute_boundary():
     assert result[0]["time_difference_ms"] == 200.0
 
 
+def test_find_lock_candidates_across_hour_boundary():
+    locks = [
+        {
+            "timestamp": "59:59.900000-3",
+            "thread": "20716",
+            "lock_mode": "EXCLUSIVE",
+            "resource_id": "resource-1",
+        }
+    ]
+
+    result = find_lock_candidates(
+        lock_events=locks,
+        exception_time="00:00.100000-0",
+        exception_thread="20716",
+        window_ms=1000,
+    )
+
+    assert len(result) == 1
+    assert result[0]["time_difference_ms"] == pytest.approx(200.0)
+
+
 def test_summarize_lock_candidates_with_resource_match():
     candidates = [
         {
