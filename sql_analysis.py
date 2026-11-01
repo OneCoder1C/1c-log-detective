@@ -18,7 +18,6 @@ def extract_sql(raw_text: str) -> str | None:
     parts = first_line.split(",", maxsplit=2)
     event_type = parts[1] if len(parts) > 1 else None
 
-    # Поддерживаем как полный текст события, так и отдельное поле Sdbl=.
     if event_type == "SDBL":
         field_name = "Sdbl"
     elif event_type == "DBV8DBEng":
@@ -30,16 +29,42 @@ def extract_sql(raw_text: str) -> str | None:
     else:
         return None
 
-    match = re.search(
-        rf"(?:^|,){field_name}=(.*?)(?=,NParams=|,Rows=|,Context=|$)",
-        raw_text,
-        re.DOTALL,
-    )
+    match = re.search(rf"(?:^|,){field_name}=", raw_text)
 
     if match is None:
         return None
 
-    return match.group(1).strip().strip("'")
+    sql_start = match.end()
+    sql_text = raw_text[sql_start:]
+
+    in_string = False
+    i = 0
+
+    while i < len(sql_text):
+        char = sql_text[i]
+
+        if char == "'":
+            if in_string and i + 1 < len(sql_text) and sql_text[i + 1] == "'":
+                i += 2
+                continue
+
+            in_string = not in_string
+
+        elif char == "," and not in_string:
+            remaining = sql_text[i + 1 :]
+
+            if re.match(r"(?:NParams|Rows|Context)=", remaining):
+                sql_text = sql_text[:i]
+                break
+
+        i += 1
+
+    sql = sql_text.strip()
+
+    if len(sql) >= 2 and sql[0] == sql[-1] and sql[0] in {"'", '"'}:
+        sql = sql[1:-1]
+
+    return sql or None
 
 
 from collections import Counter
@@ -104,7 +129,7 @@ def count_sql_commands_by_source(events) -> dict[str, Counter]:
 
 
 def normalize_sql(sql: str) -> str:
-    """Заменяет числовые значения SQL вне строковых литералов на знак вопроса."""
+    """Заменяет строковые, числовые и шестнадцатеричные литералы на ?."""
     result = []
     in_string = False
     i = 0
@@ -113,46 +138,44 @@ def normalize_sql(sql: str) -> str:
         char = sql[i]
 
         if char == "'":
-            result.append(char)
-
-            # Две одинарные кавычки внутри строки означают кавычку в значении.
-            if in_string and i + 1 < len(sql) and sql[i + 1] == "'":
-                result.append("'")
+            if not in_string:
+                result.append("?")
+                in_string = True
+            elif i + 1 < len(sql) and sql[i + 1] == "'":
                 i += 2
                 continue
+            else:
+                in_string = False
 
-            in_string = not in_string
+            i += 1
+            continue
+
+        if in_string:
             i += 1
             continue
 
         if (
-            not in_string
-            and sql[i : i + 2].lower() == "0x"
+            sql[i : i + 2].lower() == "0x"
             and i + 2 < len(sql)
             and sql[i + 2] in "0123456789abcdefABCDEF"
             and (i == 0 or not (sql[i - 1].isalnum() or sql[i - 1] == "_"))
         ):
             i += 2
-
             while i < len(sql) and sql[i] in "0123456789abcdefABCDEF":
                 i += 1
-
             result.append("?")
             continue
 
-        if not in_string and char.isdigit():
-            # Число, начинающееся внутри идентификатора, не заменяем.
+        if char.isdigit():
             if i > 0 and (sql[i - 1].isalnum() or sql[i - 1] == "_"):
                 result.append(char)
                 i += 1
                 continue
 
-            # Находим все цифры подряд.
             start = i
             while i < len(sql) and sql[i].isdigit():
                 i += 1
 
-            # Если после цифр идёт буква или _, это часть идентификатора.
             if i < len(sql) and (sql[i].isalnum() or sql[i] == "_"):
                 result.append(sql[start:i])
                 continue
@@ -187,3 +210,30 @@ def get_sql_type(sql: str) -> str:
         return command
 
     return "OTHER"
+
+
+def extract_sql_tables(sql: str) -> list[str]:
+    """Извлекает имена таблиц из SQL-запроса."""
+
+    pattern = re.compile(
+        r"\b(?:FROM|JOIN|UPDATE|INTO)\s+"
+        r"(?:\[?([A-Za-z_][\w$]*)\]?\.)?"
+        r"\[?([A-Za-z_][\w$]*)\]?",
+        re.IGNORECASE,
+    )
+
+    tables = []
+    seen = set()
+
+    for match in pattern.finditer(sql):
+        schema = match.group(1)
+        table = match.group(2)
+
+        full_name = f"{schema}.{table}" if schema else table
+        normalized_name = full_name.lower()
+
+        if normalized_name not in seen:
+            seen.add(normalized_name)
+            tables.append(full_name)
+
+    return tables

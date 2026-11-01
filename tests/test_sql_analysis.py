@@ -1,7 +1,9 @@
 from sql_analysis import (
     count_sql_commands,
+    count_sql_commands_by_source,
     extract_rows,
     extract_sql,
+    extract_sql_tables,
     get_sql_type,
 )
 
@@ -88,10 +90,12 @@ def test_normalize_sql_preserves_digits_in_identifiers():
     assert normalize_sql(sql) == "SELECT Fld123 FROM Table1 WHERE ID = ?"
 
 
-def test_normalize_sql_preserves_numbers_inside_strings():
-    sql = "SELECT * FROM T WHERE Name = 'Заказ 123'"
+def test_normalize_sql_replaces_string_literals():
+    sql1 = "SELECT * FROM T WHERE Name = 'Заказ 123'"
+    sql2 = "SELECT * FROM T WHERE Name = 'Заказ 456'"
 
-    assert normalize_sql(sql) == "SELECT * FROM T WHERE Name = 'Заказ 123'"
+    assert normalize_sql(sql1) == "SELECT * FROM T WHERE Name = ?"
+    assert normalize_sql(sql1) == normalize_sql(sql2)
 
 
 def test_normalize_sql_replaces_numbers_outside_strings():
@@ -100,12 +104,10 @@ def test_normalize_sql_replaces_numbers_outside_strings():
     assert normalize_sql(sql) == "SELECT * FROM T WHERE ID = ?"
 
 
-def test_normalize_sql_preserves_escaped_quotes():
+def test_normalize_sql_replaces_strings_with_escaped_quotes():
     sql = "SELECT * FROM T WHERE Name = 'Заказ ''123''' AND ID = 42"
 
-    assert (
-        normalize_sql(sql) == "SELECT * FROM T WHERE Name = 'Заказ ''123''' AND ID = ?"
-    )
+    assert normalize_sql(sql) == "SELECT * FROM T WHERE Name = ? AND ID = ?"
 
 
 def test_normalize_sql_preserves_digits_inside_identifiers():
@@ -206,3 +208,100 @@ def test_count_sql_commands_ignores_other_and_non_sdbl_events():
     counts = count_sql_commands(events)
 
     assert sum(counts.values()) == 0
+
+
+def test_count_sql_commands_by_source_separates_sources():
+    events = [
+        SimpleNamespace(
+            event_type="SDBL",
+            raw_text="Sdbl=SELECT * FROM Table1",
+        ),
+        SimpleNamespace(
+            event_type="SDBL",
+            raw_text="Sdbl=SELECT * FROM Table1",
+        ),
+        SimpleNamespace(
+            event_type="DBV8DBEng",
+            raw_text="DBV8DBEng,Sql=SELECT * FROM Table1",
+        ),
+        SimpleNamespace(
+            event_type="DBV8DBEng",
+            raw_text="DBV8DBEng,Sql=UPDATE Table1 SET ID = 10",
+        ),
+    ]
+
+    counts = count_sql_commands_by_source(events)
+
+    assert sum(counts["SDBL"].values()) == 2
+    assert sum(counts["DBV8DBEng"].values()) == 2
+    assert len(counts["SDBL"]) == 1
+    assert len(counts["DBV8DBEng"]) == 2
+
+
+def test_extract_sql_extracts_dbv8dbeng_query():
+    raw_text = "DBV8DBEng,Sql=SELECT * FROM Table1 WHERE ID = 10"
+
+    assert extract_sql(raw_text) == "SELECT * FROM Table1 WHERE ID = 10"
+
+
+def test_count_sql_commands_includes_dbv8dbeng():
+    events = [
+        SimpleNamespace(
+            event_type="DBV8DBEng",
+            raw_text="DBV8DBEng,Sql=SELECT * FROM Table1",
+        ),
+        SimpleNamespace(
+            event_type="DBV8DBEng",
+            raw_text="DBV8DBEng,Sql=UPDATE Table1 SET ID = 10",
+        ),
+    ]
+
+    counts = count_sql_commands(events)
+
+    assert sum(counts.values()) == 2
+    assert len(counts) == 2
+
+
+def test_extract_sql_returns_none_for_empty_dbv8dbeng_sql():
+    raw_text = "DBV8DBEng,Sql="
+
+    assert extract_sql(raw_text) is None
+
+
+def test_extract_sql_stops_before_additional_dbv8dbeng_fields():
+    raw_text = "DBV8DBEng,Sql=SELECT * FROM Table1 " "WHERE ID = 10,NParams=1,Rows=5"
+
+    assert extract_sql(raw_text) == "SELECT * FROM Table1 WHERE ID = 10"
+
+
+def test_extract_sql_preserves_commas_inside_string_literals():
+    raw_text = "DBV8DBEng,Sql=SELECT * FROM Table1 WHERE Name = 'Иванов, Иван',Rows=1"
+
+    assert extract_sql(raw_text) == "SELECT * FROM Table1 WHERE Name = 'Иванов, Иван'"
+
+
+def test_extract_sql_tables_from_select_and_join():
+    sql = "SELECT * FROM Config JOIN Users ON Config.UserID = Users.ID"
+
+    assert extract_sql_tables(sql) == ["Config", "Users"]
+
+
+def test_extract_sql_tables_from_update_insert_delete():
+    assert extract_sql_tables("UPDATE Products SET Price = 100") == ["Products"]
+    assert extract_sql_tables("INSERT INTO Orders (ID) VALUES (1)") == ["Orders"]
+    assert extract_sql_tables("DELETE FROM Customers WHERE ID = 1") == ["Customers"]
+
+
+def test_extract_sql_tables_with_schema():
+    sql = "SELECT * FROM dbo.Products JOIN dbo.Categories ON Products.CategoryID = Categories.ID"
+
+    assert extract_sql_tables(sql) == [
+        "dbo.Products",
+        "dbo.Categories",
+    ]
+
+
+def test_extract_sql_tables_does_not_duplicate_tables():
+    sql = "SELECT * FROM Products JOIN Products AS P ON Products.ID = P.ID"
+
+    assert extract_sql_tables(sql) == ["Products"]
