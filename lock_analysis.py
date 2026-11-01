@@ -5,6 +5,8 @@ from datetime import datetime
 from techlog import parse_lock_event
 from exception_groups import normalize_exception
 
+from exception_groups import extract_exception_resource
+
 
 def analyze_lock_incident(
     lock_events: list[str],
@@ -210,12 +212,7 @@ def find_lock_candidates(
     if target_time is None:
         return []
 
-    object_match = re.search(
-        r"""не выполнено\s+['"]([^'"]+)['"]""",
-        exception_description,
-        re.IGNORECASE,
-    )
-    exception_resource = object_match.group(1).strip() if object_match else ""
+    exception_resource = extract_exception_resource(exception_description) or ""
 
     candidates = []
 
@@ -271,18 +268,11 @@ def summarize_lock_candidates(candidates: list[dict]) -> dict:
             "Событие попало во временное окно",
         ]
 
-        if candidate.get("resource_match") is True:
-            candidate["match_strength"] = "Более сильное совпадение"
-            candidate["match_basis"].append("Совпадает ресурс")
-            candidate["match_reason"] = (
-                "Совпали поток, время и ресурс. " "Причинная связь не подтверждена."
-            )
-        else:
-            candidate["match_reason"] = (
-                "Совпали поток и временное окно. "
-                "Соответствие ресурса исключению не установлено. "
-                "Причинная связь не подтверждена."
-            )
+        candidate["match_reason"] = (
+            "Совпали поток и временное окно. "
+            "Соответствие ресурса исключению не установлено. "
+            "Причинная связь не подтверждена."
+        )
 
     return {
         "candidate_count": len(candidates),
