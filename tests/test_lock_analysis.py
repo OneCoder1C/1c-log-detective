@@ -1,4 +1,7 @@
-from lock_analysis import analyze_lock_incident
+import pytest
+
+from lock_analysis import analyze_lock_incident, parse_event_time
+from lock_analysis import calculate_exception_intervals
 
 
 def test_analyze_lock_incident():
@@ -183,3 +186,73 @@ def test_find_lock_candidates_across_minute_boundary():
 
     assert len(result) == 1
     assert result[0]["time_difference_ms"] == 200.0
+
+
+def test_summarize_lock_candidates_with_resource_match():
+    candidates = [
+        {
+            "timestamp": "03:28.039032-3",
+            "thread": "20716",
+            "lock_mode": "EXCLUSIVE",
+            "resource_id": "69:b0a17c10c924aec011f1d1eaa847bbb1",
+            "resource_fields": {"Fld2295": "0"},
+            "time_difference_ms": 108.999,
+            "resource_match": True,
+        }
+    ]
+
+    result = summarize_lock_candidates(candidates)
+
+    assert result["candidate_count"] == 1
+    assert result["candidates"][0]["resource_match"] is True
+    assert "ресурс" in result["candidates"][0]["match_reason"].lower()
+
+
+def test_parse_event_time_across_hour_boundary():
+    previous_time = parse_event_time("59:59.900000-3")
+    current_time = parse_event_time("00:00.100000-0")
+
+    assert previous_time is not None
+    assert current_time is not None
+
+    interval_ms = (current_time + 3600 - previous_time) * 1000
+
+    assert interval_ms == pytest.approx(200.0)
+
+
+def test_calculate_exception_intervals():
+    result = calculate_exception_intervals(
+        [
+            "03:28.000000-0",
+            "03:28.100000-0",
+            "03:28.300000-0",
+        ]
+    )
+
+    assert result["interval_count"] == 2
+    assert result["min_ms"] == pytest.approx(100)
+    assert result["max_ms"] == pytest.approx(200)
+    assert result["average_ms"] == pytest.approx(150)
+    assert result["up_to_100_ms"] == 1
+    assert result["up_to_1000_ms"] == 2
+
+
+def test_calculate_exception_intervals_across_hour_boundary():
+    result = calculate_exception_intervals(
+        [
+            "59:59.900000-0",
+            "00:00.100000-0",
+        ]
+    )
+
+    assert result["interval_count"] == 1
+    assert result["min_ms"] == pytest.approx(200)
+
+
+def test_calculate_exception_intervals_without_valid_timestamps():
+    result = calculate_exception_intervals(["invalid", "incorrect"])
+
+    assert result["interval_count"] == 0
+    assert result["min_ms"] is None
+    assert result["max_ms"] is None
+    assert result["average_ms"] is None
