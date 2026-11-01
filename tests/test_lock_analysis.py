@@ -235,6 +235,13 @@ def test_calculate_exception_intervals():
     assert result["average_ms"] == pytest.approx(150)
     assert result["up_to_100_ms"] == 1
     assert result["up_to_1000_ms"] == 2
+    assert result["interval_ranges"] == {
+        "up_to_10_ms": 0,
+        "10_to_100_ms": 1,
+        "100_to_1000_ms": 1,
+        "1_to_10_seconds": 0,
+        "over_10_seconds": 0,
+    }
 
 
 def test_calculate_exception_intervals_across_hour_boundary():

@@ -167,6 +167,12 @@ def main():
                 f"Средний интервал: {interval_stats['average_ms']:.3f} мс",
                 f"Интервалов до 100 мс: {interval_stats['up_to_100_ms']}",
                 f"Интервалов до 1000 мс: {interval_stats['up_to_1000_ms']}",
+                "Распределение интервалов:",
+                f"  До 10 мс: {interval_stats['interval_ranges']['up_to_10_ms']}",
+                f"  10–100 мс: {interval_stats['interval_ranges']['10_to_100_ms']}",
+                f"  100–1000 мс: {interval_stats['interval_ranges']['100_to_1000_ms']}",
+                f"  1–10 секунд: {interval_stats['interval_ranges']['1_to_10_seconds']}",
+                f"  Более 10 секунд: {interval_stats['interval_ranges']['over_10_seconds']}",
             ]
         )
     else:

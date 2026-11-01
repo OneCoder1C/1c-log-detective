@@ -88,6 +88,14 @@ def calculate_exception_intervals(timestamps: list[str]) -> dict:
         previous_seconds = current_seconds
         previous_elapsed_seconds = elapsed_seconds
 
+    interval_ranges = {
+        "up_to_10_ms": sum(value < 10 for value in intervals_ms),
+        "10_to_100_ms": sum(10 <= value < 100 for value in intervals_ms),
+        "100_to_1000_ms": sum(100 <= value < 1000 for value in intervals_ms),
+        "1_to_10_seconds": sum(1000 <= value < 10000 for value in intervals_ms),
+        "over_10_seconds": sum(value >= 10000 for value in intervals_ms),
+    }
+
     if not intervals_ms:
         return {
             "interval_count": 0,
@@ -96,6 +104,7 @@ def calculate_exception_intervals(timestamps: list[str]) -> dict:
             "average_ms": None,
             "up_to_100_ms": 0,
             "up_to_1000_ms": 0,
+            "interval_ranges": interval_ranges,
         }
 
     return {
@@ -105,6 +114,7 @@ def calculate_exception_intervals(timestamps: list[str]) -> dict:
         "average_ms": sum(intervals_ms) / len(intervals_ms),
         "up_to_100_ms": sum(value <= 100 for value in intervals_ms),
         "up_to_1000_ms": sum(value <= 1000 for value in intervals_ms),
+        "interval_ranges": interval_ranges,
     }
 
 
