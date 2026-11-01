@@ -285,3 +285,121 @@ def test_analyze_sql_tables_sorts_by_total_duration():
     assert result[0]["table"] == "TableB"
     assert result[0]["total_duration_us"] == 50_000
     assert result[1]["table"] == "TableA"
+
+
+def test_analyze_sql_performance_ignores_non_sql_event_types():
+    from performance_analysis import analyze_sql_performance
+
+    events = [
+        make_event("EXCP", 20_000),
+        make_event("DBV8DBEng", 15_000),
+    ]
+
+    events[0].raw_text = '12:00:00.000,EXCP,1,Sql="SELECT * FROM TableB"'
+    events[1].raw_text = '12:00:00.000,DBV8DBEng,1,Sql="SELECT * FROM TableA"'
+
+    result = analyze_sql_performance(events)
+
+    assert result["SELECT"]["count"] == 1
+    assert result["SELECT"]["total_duration_us"] == 15_000
+
+
+def test_analyze_slow_sql_ignores_non_sql_event_types():
+    from performance_analysis import analyze_slow_sql
+
+    events = [
+        make_event("EXCP", 30_000),
+        make_event("DBV8DBEng", 15_000),
+    ]
+
+    events[0].raw_text = '12:00:00.000,EXCP,1,Sql="SELECT * FROM TableB"'
+    events[1].raw_text = '12:00:00.000,DBV8DBEng,1,Sql="SELECT * FROM TableA"'
+
+    result = analyze_slow_sql(events)
+
+    assert len(result) == 1
+    assert result[0]["count"] == 1
+    assert result[0]["total_duration_us"] == 15_000
+    assert "TableA" in result[0]["normalized_sql"]
+
+
+def test_analyze_sql_tables_calculates_p95():
+    from performance_analysis import analyze_sql_tables
+
+    events = [
+        TechLogEvent(
+            timestamp="12:00:00",
+            event_type="DBV8DBEng",
+            level="1",
+            raw_text=("12:00:00.000,DBV8DBEng,1," 'Sql="SELECT * FROM TableA"'),
+            description="",
+            duration_us=duration,
+        )
+        for duration in [1_000, 2_000, 3_000, 4_000, 5_000]
+    ]
+
+    result = analyze_sql_tables(events)
+
+    assert len(result) == 1
+    assert result[0]["table"] == "TableA"
+    assert result[0]["p95_duration_us"] == 5_000
+
+
+def test_analyze_slow_events_groups_by_event_type():
+    from performance_analysis import analyze_slow_events
+
+    events = [
+        make_event("EXCP", 20_000),
+        make_event("EXCP", 30_000),
+        make_event("CALL", 15_000),
+        make_event("SDBL", 50_000),
+        make_event("DBV8DBEng", 60_000),
+        make_event("EXCP", 5_000),
+    ]
+
+    result = analyze_slow_events(events)
+
+    assert len(result) == 2
+    assert result[0]["event_type"] == "EXCP"
+    assert result[0]["count"] == 2
+    assert result[0]["total_duration_us"] == 50_000
+    assert result[0]["p95_duration_us"] == 30_000
+    assert result[1]["event_type"] == "CALL"
+
+
+def test_analyze_slow_events_respects_limit():
+    from performance_analysis import analyze_slow_events
+
+    events = [
+        make_event("EXCP", 20_000),
+        make_event("CALL", 30_000),
+        make_event("SDBL", 50_000),
+    ]
+
+    result = analyze_slow_events(events, limit=1)
+
+    assert len(result) == 1
+    assert result[0]["event_type"] == "CALL"
+
+
+def test_analyze_slow_events_rejects_negative_limit():
+    import pytest
+    from performance_analysis import analyze_slow_events
+
+    with pytest.raises(ValueError):
+        analyze_slow_events([], limit=-1)
+
+
+def test_analyze_slow_events_returns_empty_when_no_slow_events():
+    from performance_analysis import analyze_slow_events
+
+    events = [
+        make_event("EXCP", 5_000),
+        make_event("CALL", 9_999),
+        make_event("SDBL", 50_000),
+        make_event("DBV8DBEng", 60_000),
+    ]
+
+    result = analyze_slow_events(events)
+
+    assert result == []

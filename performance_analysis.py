@@ -58,6 +58,63 @@ def analyze_performance(events: Iterable[TechLogEvent]) -> dict:
     }
 
 
+def analyze_slow_events(
+    events: Iterable[TechLogEvent],
+    limit: int = 20,
+) -> list[dict]:
+    """Анализирует медленные события ТЖ, не связанные с SQL."""
+
+    if limit < 0:
+        raise ValueError("limit не может быть отрицательным")
+
+    stats = defaultdict(
+        lambda: {
+            "count": 0,
+            "total_duration_us": 0,
+            "max_duration_us": 0,
+            "durations": [],
+        }
+    )
+
+    for event in events:
+        if event.event_type in {"SDBL", "DBV8DBEng"}:
+            continue
+
+        if event.duration_us is None or event.duration_us < 10_000:
+            continue
+
+        data = stats[event.event_type]
+
+        data["count"] += 1
+        data["total_duration_us"] += event.duration_us
+        data["max_duration_us"] = max(
+            data["max_duration_us"],
+            event.duration_us,
+        )
+        data["durations"].append(event.duration_us)
+
+    result = []
+
+    for event_type, data in stats.items():
+        sorted_durations = sorted(data["durations"])
+        p95_index = ceil(len(sorted_durations) * 0.95) - 1
+
+        data["avg_duration_us"] = data["total_duration_us"] / data["count"]
+        data["p95_duration_us"] = sorted_durations[p95_index]
+        data["event_type"] = event_type
+
+        del data["durations"]
+
+        result.append(data)
+
+    result.sort(
+        key=lambda item: item["total_duration_us"],
+        reverse=True,
+    )
+
+    return result[:limit]
+
+
 def analyze_sql_performance(events: Iterable[TechLogEvent]) -> dict:
     """Собирает статистику длительности SQL-событий по типам команд."""
 
@@ -72,6 +129,12 @@ def analyze_sql_performance(events: Iterable[TechLogEvent]) -> dict:
     durations = defaultdict(list)
 
     for event in events:
+        if event.event_type not in {"SDBL", "DBV8DBEng"}:
+            continue
+
+        if event.duration_us is None:
+            continue
+
         sql = extract_sql(event.raw_text)
 
         if not sql or event.duration_us is None:
@@ -125,6 +188,9 @@ def analyze_slow_sql(
     durations = defaultdict(list)
 
     for event in events:
+        if event.event_type not in {"SDBL", "DBV8DBEng"}:
+            continue
+
         if event.duration_us is None:
             continue
 
@@ -182,6 +248,7 @@ def analyze_sql_tables(events: Iterable[TechLogEvent]) -> list[dict]:
             "total_duration_us": 0,
             "max_duration_us": 0,
             "slow_count": 0,
+            "durations": [],
         }
     )
 
@@ -209,6 +276,7 @@ def analyze_sql_tables(events: Iterable[TechLogEvent]) -> list[dict]:
 
             data["count"] += 1
             data["total_duration_us"] += event.duration_us
+            data["durations"].append(event.duration_us)
             data["max_duration_us"] = max(
                 data["max_duration_us"],
                 event.duration_us,
@@ -221,6 +289,13 @@ def analyze_sql_tables(events: Iterable[TechLogEvent]) -> list[dict]:
 
     for table, data in stats.items():
         data["avg_duration_us"] = data["total_duration_us"] / data["count"]
+
+        sorted_durations = sorted(data["durations"])
+        p95_index = ceil(len(sorted_durations) * 0.95) - 1
+        data["p95_duration_us"] = sorted_durations[p95_index]
+
+        del data["durations"]
+
         data["table"] = table
         result.append(data)
 
