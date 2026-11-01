@@ -78,3 +78,33 @@ def test_parse_multiple_locks():
         "Fld2295": "0",
         "Fld35801": "69:b0a17c10c924aec011f1d2148cd87c97",
     }
+
+
+def test_parse_lock_with_quoted_field_value():
+    raw_event = make_tlock(
+        "InfoRg38298.DIMS Exclusive "
+        "Fld2295=0 "
+        "Fld38299=69:b0a17c10c924aec011f1d2148cd87c97 "
+        'Fld38300="СтандартныеПодсистемы.УправлениеДоступом.ПраваРолей"'
+    )
+
+    result = parse_lock_event(raw_event)
+
+    assert result is not None
+    assert len(result["locks"]) == 1
+
+    assert result["locks"][0]["resource_fields"]["Fld38300"] == (
+        "СтандартныеПодсистемы.УправлениеДоступом.ПраваРолей"
+    )
+
+
+def test_parse_lock_with_comma_inside_quoted_value():
+    raw_event = make_tlock(
+        "SystemSettings.SYSTEMLOCK Exclusive "
+        'ObjectKey="LogonUnited.f/Такси,НастройкиОкнаТонкогоКлиента"'
+    )
+
+    result = parse_lock_event(raw_event)
+
+    assert result is not None
+    assert len(result["locks"]) == 1
