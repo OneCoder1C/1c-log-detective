@@ -118,6 +118,84 @@ def calculate_exception_intervals(timestamps: list[str]) -> dict:
     }
 
 
+def find_exception_series(
+    timestamps: list[str],
+    max_gap_ms: int = 1000,
+    min_events: int = 3,
+) -> list[dict]:
+    """Находит серии исключений с небольшими интервалами между событиями."""
+
+    timed_events = []
+
+    hour_offset = 0
+    previous_seconds = None
+
+    for timestamp in timestamps:
+        current_seconds = parse_event_time(timestamp)
+
+        if current_seconds is None:
+            continue
+
+        if previous_seconds is not None and previous_seconds - current_seconds > 1800:
+            hour_offset += 3600
+
+        elapsed_seconds = current_seconds + hour_offset
+
+        timed_events.append(
+            {
+                "timestamp": timestamp,
+                "elapsed_seconds": elapsed_seconds,
+            }
+        )
+
+        previous_seconds = current_seconds
+
+    series = []
+    current_series = []
+
+    for event in timed_events:
+        if not current_series:
+            current_series.append(event)
+            continue
+
+        gap_ms = (
+            event["elapsed_seconds"] - current_series[-1]["elapsed_seconds"]
+        ) * 1000
+
+        if 0 <= gap_ms <= max_gap_ms:
+            current_series.append(event)
+        else:
+            if len(current_series) >= min_events:
+                series.append(_build_exception_series(current_series))
+
+            current_series = [event]
+
+    if len(current_series) >= min_events:
+        series.append(_build_exception_series(current_series))
+
+    return series
+
+
+def _build_exception_series(events: list[dict]) -> dict:
+    """Формирует сводку по одной серии исключений."""
+
+    gaps_ms = [
+        (events[index]["elapsed_seconds"] - events[index - 1]["elapsed_seconds"]) * 1000
+        for index in range(1, len(events))
+    ]
+
+    return {
+        "event_count": len(events),
+        "start_timestamp": events[0]["timestamp"],
+        "end_timestamp": events[-1]["timestamp"],
+        "duration_ms": round(
+            (events[-1]["elapsed_seconds"] - events[0]["elapsed_seconds"]) * 1000,
+            3,
+        ),
+        "max_gap_ms": round(max(gaps_ms), 3),
+    }
+
+
 def find_lock_candidates(
     lock_events: list[dict],
     exception_time: str,

@@ -74,3 +74,21 @@ def count_exception_groups(descriptions: list[str]) -> dict[str, int]:
         groups[key] += 1
 
     return dict(groups)
+
+
+import re
+
+
+def extract_exception_resource(description: str) -> str | None:
+    """Извлекает имя ресурса из описания исключения."""
+
+    match = re.search(
+        r"не выполнено\s+'([A-Z][A-Z0-9_]*)'",
+        description,
+        re.IGNORECASE,
+    )
+
+    if match:
+        return match.group(1)
+
+    return None

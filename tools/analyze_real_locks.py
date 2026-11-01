@@ -6,9 +6,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from techlog import extract_fields
 from techlog import iter_techlog_events, parse_event, parse_lock_event
-from exception_groups import normalize_exception, count_exception_groups
+from exception_groups import (
+    normalize_exception,
+    count_exception_groups,
+    extract_exception_resource,
+)
 from lock_analysis import (
     calculate_exception_intervals,
+    find_exception_series,
     find_lock_candidates,
     summarize_lock_candidates,
 )
@@ -28,10 +33,12 @@ def main():
 
     lock_events = []
     lock_exceptions = []
+    exception_timestamps = []
     event_types = Counter()
     exceptions_by_user = Counter()
     exceptions_by_thread = Counter()
     exceptions_by_minute = Counter()
+    exceptions_by_resource = Counter()
 
     print("Читаю технологический журнал...")
     print("Большой файл может обрабатываться несколько минут.")
@@ -69,7 +76,13 @@ def main():
 
                     lock_exceptions.append(fields)
 
+                    resource = extract_exception_resource(fields["description"])
+
+                    if resource and not resource.isdigit():
+                        exceptions_by_resource[resource] += 1
+
                     exceptions_by_user[fields["user"] or "не указан"] += 1
+
                     exceptions_by_thread[fields["thread"] or "не указан"] += 1
 
                     timestamp = fields["timestamp"]
@@ -120,6 +133,20 @@ def main():
     for thread, count in exceptions_by_thread.most_common():
         report_lines.append(f"{thread}: {count}")
 
+    report_lines.extend(
+        [
+            "",
+            "ИСКЛЮЧЕНИЯ ПО РЕСУРСАМ",
+            "-" * 50,
+        ]
+    )
+
+    if exceptions_by_resource:
+        for resource, count in exceptions_by_resource.most_common():
+            report_lines.append(f"{resource}: {count}")
+    else:
+        report_lines.append("Ресурсы не определены")
+
     if lock_exceptions:
         timestamps = [
             exception["timestamp"]
@@ -150,6 +177,8 @@ def main():
         [exception["timestamp"] for exception in lock_exceptions]
     )
 
+    exception_series = find_exception_series(exception_timestamps)
+
     report_lines.extend(
         [
             "",
@@ -177,6 +206,41 @@ def main():
         )
     else:
         report_lines.append("Не удалось рассчитать интервалы")
+    report_lines.extend(
+        [
+            "",
+            "СЕРИИ ИСКЛЮЧЕНИЙ",
+            "-" * 50,
+            f"Найдено серий: {len(exception_series)}",
+        ]
+    )
+
+    for index, series in enumerate(exception_series, start=1):
+        report_lines.extend(
+            [
+                "",
+                f"Серия #{index}",
+                f"Количество событий: {series['event_count']}",
+                f"Начало: {series['start_timestamp']}",
+                f"Окончание: {series['end_timestamp']}",
+                f"Продолжительность: {series['duration_ms']:.3f} мс",
+                f"Максимальный интервал: {series['max_gap_ms']:.3f} мс",
+            ]
+        )
+
+    for index, series in enumerate(exception_series, start=1):
+        report_lines.extend(
+            [
+                "",
+                f"Серия #{index}",
+                f"Количество событий: {series['event_count']}",
+                f"Начало: {series['start_timestamp']}",
+                f"Окончание: {series['end_timestamp']}",
+                f"Продолжительность: {series['duration_ms']:.3f} мс",
+                f"Максимальный интервал: {series['max_gap_ms']:.3f} мс",
+            ]
+        )
+
     # Для каждого исключения ищем ближайшие события TLOCK.
     for index, exception in enumerate(lock_exceptions, start=1):
         candidates = find_lock_candidates(

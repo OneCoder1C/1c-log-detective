@@ -1,6 +1,7 @@
 import pytest
 
 from exception_groups import (
+    extract_exception_resource,
     extract_guid,
     get_exception_detail,
     normalize_exception,
@@ -132,3 +133,27 @@ def test_extract_guid_not_found():
     description = "Обычная ошибка без идентификатора"
 
     assert extract_guid(description) is None
+
+
+def test_extract_exception_resource_datazoneobjectlocks():
+    description = (
+        "Не удалось заблокировать запись. Действие "
+        "(изменение, удаление или блокировка записи) "
+        "не выполнено 'DATAZONEOBJECTLOCKS'"
+    )
+
+    assert extract_exception_resource(description) == "DATAZONEOBJECTLOCKS"
+
+
+def test_extract_exception_resource_activeusers():
+    description = (
+        "Не удалось заблокировать запись. Действие " "не выполнено 'ACTIVEUSERS'"
+    )
+
+    assert extract_exception_resource(description) == "ACTIVEUSERS"
+
+
+def test_extract_exception_resource_not_found():
+    description = "Неверно указан пользователь или пароль"
+
+    assert extract_exception_resource(description) is None

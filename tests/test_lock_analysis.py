@@ -2,6 +2,7 @@ import pytest
 
 from lock_analysis import analyze_lock_incident, parse_event_time
 from lock_analysis import calculate_exception_intervals
+from lock_analysis import find_exception_series
 
 
 def test_analyze_lock_incident():
@@ -263,3 +264,45 @@ def test_calculate_exception_intervals_without_valid_timestamps():
     assert result["min_ms"] is None
     assert result["max_ms"] is None
     assert result["average_ms"] is None
+
+
+def test_find_exception_series():
+    result = find_exception_series(
+        [
+            "03:28.000000-0",
+            "03:28.100000-0",
+            "03:28.300000-0",
+            "03:28.500000-0",
+            "03:30.000000-0",
+        ]
+    )
+
+    assert len(result) == 1
+    assert result[0]["event_count"] == 4
+    assert result[0]["duration_ms"] == pytest.approx(500)
+    assert result[0]["max_gap_ms"] == pytest.approx(200)
+
+
+def test_find_exception_series_across_hour_boundary():
+    result = find_exception_series(
+        [
+            "59:59.500000-0",
+            "59:59.800000-0",
+            "00:00.100000-0",
+        ]
+    )
+
+    assert len(result) == 1
+    assert result[0]["event_count"] == 3
+    assert result[0]["duration_ms"] == pytest.approx(600)
+
+
+def test_find_exception_series_respects_min_events():
+    result = find_exception_series(
+        [
+            "03:28.000000-0",
+            "03:28.100000-0",
+        ]
+    )
+
+    assert result == []
