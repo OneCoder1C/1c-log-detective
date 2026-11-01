@@ -57,6 +57,75 @@ def extract_fields(raw_text: str) -> dict[str, str]:
     return fields
 
 
+def parse_lock_items(locks: str) -> list[dict]:
+    """Разбирает отдельные блокировки из поля Locks."""
+    items = []
+    current_item = []
+    quote = None
+
+    for char in locks:
+        if char in ("'", '"'):
+            if quote is None:
+                quote = char
+            elif quote == char:
+                quote = None
+
+        if char == "," and quote is None:
+            item = "".join(current_item).strip()
+
+            if item:
+                items.append(item)
+
+            current_item = []
+        else:
+            current_item.append(char)
+
+    item = "".join(current_item).strip()
+
+    if item:
+        items.append(item)
+
+    result = []
+
+    for item in items:
+        region_match = re.match(r"([^\s]+)", item)
+
+        mode_match = re.search(
+            r"\b(Shared|Exclusive)\b",
+            item,
+            re.IGNORECASE,
+        )
+
+        resource_id_match = re.search(
+            r"\bID=([^\s,]+)",
+            item,
+        )
+
+        resource_fields = dict(
+            re.findall(
+                r"\b(Fld\d+)=((?:\"[^\"]*\")|(?:'[^']*')|[^\s,]+)",
+                item,
+            )
+        )
+
+        resource_fields = {
+            key: value.strip("\"'") for key, value in resource_fields.items()
+        }
+
+        result.append(
+            {
+                "region": region_match.group(1) if region_match else "",
+                "lock_mode": mode_match.group(1).upper() if mode_match else "UNKNOWN",
+                "resource_id": (
+                    resource_id_match.group(1) if resource_id_match else ""
+                ),
+                "resource_fields": resource_fields,
+            }
+        )
+
+    return result
+
+
 def parse_lock_event(raw_text: str) -> dict | None:
     """Извлекает структурированные данные из события TLOCK."""
     event = parse_event(raw_text)
@@ -66,6 +135,7 @@ def parse_lock_event(raw_text: str) -> dict | None:
 
     fields = extract_fields(raw_text)
     locks = fields.get("Locks", "")
+    lock_items = parse_lock_items(locks)
 
     mode_match = re.search(
         r"\b(Shared|Exclusive)\b",
@@ -97,6 +167,7 @@ def parse_lock_event(raw_text: str) -> dict | None:
         "user": fields.get("Usr", ""),
         "database": fields.get("DataBase", ""),
         "regions": fields.get("Regions", ""),
+        "locks": lock_items,
         "lock_mode": (mode_match.group(1).upper() if mode_match else "UNKNOWN"),
         "resource_id": (resource_id_match.group(1) if resource_id_match else ""),
         "resource_fields": resource_fields,

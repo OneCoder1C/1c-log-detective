@@ -54,3 +54,27 @@ def test_non_tlock_event_returns_none():
     raw_event = "03:28.039032-3,EXCP,2," "level=INFO,process=1cv8c,OSThread=20716"
 
     assert parse_lock_event(raw_event) is None
+
+
+def test_parse_multiple_locks():
+    raw_event = make_tlock(
+        "Reference221.REFLOCK Exclusive Fld2295=0,"
+        "InfoRg35800.DIMS Exclusive "
+        "Fld2295=0 Fld35801=69:b0a17c10c924aec011f1d2148cd87c97"
+    )
+
+    result = parse_lock_event(raw_event)
+
+    assert result is not None
+    assert len(result["locks"]) == 2
+
+    assert result["locks"][0]["region"] == "Reference221.REFLOCK"
+    assert result["locks"][0]["lock_mode"] == "EXCLUSIVE"
+    assert result["locks"][0]["resource_fields"] == {"Fld2295": "0"}
+
+    assert result["locks"][1]["region"] == "InfoRg35800.DIMS"
+    assert result["locks"][1]["lock_mode"] == "EXCLUSIVE"
+    assert result["locks"][1]["resource_fields"] == {
+        "Fld2295": "0",
+        "Fld35801": "69:b0a17c10c924aec011f1d2148cd87c97",
+    }
