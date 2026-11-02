@@ -44,3 +44,25 @@ real_locks_output.txt
 
 # Generated test reports
 tests/test_report*.txt
+
+# IDE and editor files
+.vscode/
+.idea/
+*.code-workspace
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*.orig
+
+# SQLite auxiliary files
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
+
+# Local archives with logs
+*.log.zip
+*.log.gz
+*.log.7z
