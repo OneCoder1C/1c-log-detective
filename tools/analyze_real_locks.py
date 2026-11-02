@@ -53,7 +53,7 @@ def main():
             event_types[event.event_type] += 1
 
             if event.event_type == "TLOCK":
-                lock = parse_lock_event(raw_event)
+                lock = parse_lock_event(raw_event, event)
                 if lock is not None:
                     lock_events.append(lock)
 

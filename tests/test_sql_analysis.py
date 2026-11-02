@@ -6,6 +6,7 @@ from sql_analysis import (
     extract_sql_tables,
     get_sql_type,
 )
+from sql_analysis import normalize_sql, normalize_sql_reference
 
 
 def test_extract_rows_returns_number():
@@ -72,9 +73,6 @@ def test_count_sql_queries_ignores_other_events():
     counts = count_sql_queries(events)
 
     assert len(counts) == 0
-
-
-from sql_analysis import normalize_sql
 
 
 def test_normalize_sql_groups_different_numbers():
@@ -305,3 +303,17 @@ def test_extract_sql_tables_does_not_duplicate_tables():
     sql = "SELECT * FROM Products JOIN Products AS P ON Products.ID = P.ID"
 
     assert extract_sql_tables(sql) == ["Products"]
+
+
+def test_normalize_sql_matches_reference():
+    samples = [
+        "SELECT * FROM Table1 WHERE ID = 10",
+        "SELECT Fld123 FROM Const32348 WHERE ID = 42",
+        "SELECT * FROM T WHERE Name = 'Заказ 123'",
+        "SELECT * FROM T WHERE Name = 'Заказ ''123''' AND ID = 42",
+        "SELECT * FROM Table1 WHERE RecordKey = 0x31",
+        "SELECT 123abc, 45_xyz, 67 FROM Table1",
+    ]
+
+    for sql in samples:
+        assert normalize_sql(sql) == normalize_sql_reference(sql)

@@ -1,4 +1,4 @@
-
+```gitignore
 # Python
 __pycache__/
 *.py[cod]
@@ -10,14 +10,31 @@ __pycache__/
 .coverage
 htmlcov/
 
+# Virtual environments
+.venv/
+venv/
+
 # Generated reports and analysis results
 report*.txt
 report*.html
 report*.json
-tests/test_report*.txt
+analysis_output.txt
+analysis_result.txt
+longest_event.txt
+inspection_output.txt
+encoding_test.txt
+lock_analysis_report.txt
+incident_report.txt
+real_locks_output.txt
 
-# 1C technological logs
+# Generated databases
+*.db
+*.sqlite
+*.sqlite3
+
+# 1C technological logs and local data
 1c_logs/
+1c_log_config/
 *.log
 
 # Local configuration and environment files
@@ -25,18 +42,5 @@ tests/test_report*.txt
 .env.*
 !.env.example
 
-# Local inspection output and analysis artifacts
-inspection_output.txt
-encoding_test.txt
-lock_analysis_report.txt
-
 # Generated test reports
 tests/test_report*.txt
-
-1c_log_config/
-*.log
-# Generated incident reports
-incident_report.txt
-report.txt
-
-real_locks_output.txt

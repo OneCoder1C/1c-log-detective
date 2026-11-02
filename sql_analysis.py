@@ -1,5 +1,12 @@
 import re
 
+SQL_TABLE_PATTERN = re.compile(
+    r"\b(?:FROM|JOIN|UPDATE|INTO)\s+"
+    r"(?:\[?([A-Za-z_][\w$]*)\]?\.)?"
+    r"\[?([A-Za-z_][\w$]*)\]?",
+    re.IGNORECASE,
+)
+
 
 def extract_rows(raw_text: str) -> int | None:
     """Извлекает количество строк из события технологического журнала SDBL."""
@@ -9,6 +16,9 @@ def extract_rows(raw_text: str) -> int | None:
         return None
 
     return int(match.group(1))
+
+
+SQL_FIELD_END_PATTERN = re.compile(r"(?:NParams|Rows|Context)=")
 
 
 def extract_sql(raw_text: str) -> str | None:
@@ -51,9 +61,7 @@ def extract_sql(raw_text: str) -> str | None:
             in_string = not in_string
 
         elif char == "," and not in_string:
-            remaining = sql_text[i + 1 :]
-
-            if re.match(r"(?:NParams|Rows|Context)=", remaining):
+            if SQL_FIELD_END_PATTERN.match(sql_text, i + 1):
                 sql_text = sql_text[:i]
                 break
 
@@ -128,7 +136,7 @@ def count_sql_commands_by_source(events) -> dict[str, Counter]:
     return counts
 
 
-def normalize_sql(sql: str) -> str:
+def normalize_sql_reference(sql: str) -> str:
     """Заменяет строковые, числовые и шестнадцатеричные литералы на ?."""
     result = []
     in_string = False
@@ -189,6 +197,76 @@ def normalize_sql(sql: str) -> str:
     return "".join(result)
 
 
+def normalize_sql(sql: str) -> str:
+    """Быстрая нормализация SQL с сохранением поведения эталона."""
+
+    result = []
+    in_string = False
+    i = 0
+    length = len(sql)
+
+    while i < length:
+        char = sql[i]
+
+        # Обработка строк в одинарных кавычках.
+        if char == "'":
+            if not in_string:
+                result.append("?")
+                in_string = True
+            elif i + 1 < length and sql[i + 1] == "'":
+                i += 2
+                continue
+            else:
+                in_string = False
+
+            i += 1
+            continue
+
+        if in_string:
+            i += 1
+            continue
+
+        # Обработка шестнадцатеричных литералов.
+        if (
+            char == "0"
+            and i + 2 < length
+            and sql[i + 1] in "xX"
+            and sql[i + 2] in "0123456789abcdefABCDEF"
+            and (i == 0 or not (sql[i - 1].isalnum() or sql[i - 1] == "_"))
+        ):
+            i += 2
+
+            while i < length and sql[i] in "0123456789abcdefABCDEF":
+                i += 1
+
+            result.append("?")
+            continue
+
+        # Обработка числовых литералов.
+        if char.isdigit():
+            if i > 0 and (sql[i - 1].isalnum() or sql[i - 1] == "_"):
+                result.append(char)
+                i += 1
+                continue
+
+            start = i
+
+            while i < length and sql[i].isdigit():
+                i += 1
+
+            if i < length and (sql[i].isalnum() or sql[i] == "_"):
+                result.append(sql[start:i])
+                continue
+
+            result.append("?")
+            continue
+
+        result.append(char)
+        i += 1
+
+    return "".join(result)
+
+
 def get_sql_type(sql: str) -> str:
     """Определяет тип SQL-команды по первому ключевому слову."""
     match = re.match(r"\s*([A-Za-z]+)", sql)
@@ -215,17 +293,10 @@ def get_sql_type(sql: str) -> str:
 def extract_sql_tables(sql: str) -> list[str]:
     """Извлекает имена таблиц из SQL-запроса."""
 
-    pattern = re.compile(
-        r"\b(?:FROM|JOIN|UPDATE|INTO)\s+"
-        r"(?:\[?([A-Za-z_][\w$]*)\]?\.)?"
-        r"\[?([A-Za-z_][\w$]*)\]?",
-        re.IGNORECASE,
-    )
-
     tables = []
     seen = set()
 
-    for match in pattern.finditer(sql):
+    for match in SQL_TABLE_PATTERN.finditer(sql):
         schema = match.group(1)
         table = match.group(2)
 

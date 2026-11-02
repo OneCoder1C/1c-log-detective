@@ -13,6 +13,7 @@ class TechLogEvent:
     raw_text: str
     description: str
     duration_us: int | None = None
+    func: str = ""
 
 
 def is_event_start(line: str) -> bool:
@@ -26,7 +27,9 @@ def is_event_start(line: str) -> bool:
     event_type = parts[1]
     event_number = parts[2]
 
-    valid_event_type = event_type.isupper() or event_type == "DBV8DBEng"
+    valid_event_type = (
+        event_type.isalpha() and event_type.isupper()
+    ) or event_type == "DBV8DBEng"
 
     return (
         ":" in timestamp
@@ -136,14 +139,30 @@ def parse_lock_items(locks: str) -> list[dict]:
     return result
 
 
-def parse_lock_event(raw_text: str) -> dict | None:
+def parse_lock_event(
+    raw_text: str,
+    event: TechLogEvent | None = None,
+    include_context: bool = True,
+    include_resource_fields: bool = True,
+    compact: bool = False,
+) -> dict | None:
     """Извлекает структурированные данные из события TLOCK."""
-    event = parse_event(raw_text)
+
+    if event is None:
+        event = parse_event(raw_text)
 
     if event is None or event.event_type != "TLOCK":
         return None
 
     fields = extract_fields(raw_text)
+
+    if compact:
+        return {
+            "timestamp": event.timestamp,
+            "thread": fields.get("OSThread", ""),
+            "regions": fields.get("Regions", ""),
+        }
+
     locks = fields.get("Locks", "")
     lock_items = parse_lock_items(locks)
 
@@ -180,8 +199,8 @@ def parse_lock_event(raw_text: str) -> dict | None:
         "locks": lock_items,
         "lock_mode": (mode_match.group(1).upper() if mode_match else "UNKNOWN"),
         "resource_id": (resource_id_match.group(1) if resource_id_match else ""),
-        "resource_fields": resource_fields,
-        "context": fields.get("Context", ""),
+        "resource_fields": resource_fields if include_resource_fields else {},
+        "context": fields.get("Context", "") if include_context else "",
     }
 
 
@@ -249,19 +268,23 @@ def parse_event(raw_text: str) -> TechLogEvent | None:
 
     event_type = parts[1]
     properties_text = parts[3] if len(parts) > 3 else ""
+    fields = extract_fields(raw_text)
+    func = fields.get("Func", "")
 
     level_match = re.search(r"(?:^|,)level=([^,\s]+)", properties_text)
 
     level = level_match.group(1) if level_match else "UNKNOWN"
 
-    description_match = re.search(
-        r"(?:^|,)Descr=(['\"])(.*?)(?<!\\)\1(?=,|\r?\n|$)",
-        raw_text,
-        re.DOTALL,
-    )
+    description = ""
 
-    description = description_match.group(2) if description_match else ""
+    if event_type not in {"SDBL", "DBV8DBEng"}:
+        description_match = re.search(
+            r"(?:^|,)Descr=(['\"])(.*?)(?<!\\)\1(?=,|\r?\n|$)",
+            raw_text,
+            re.DOTALL,
+        )
 
+        description = description_match.group(2) if description_match else ""
     return TechLogEvent(
         timestamp=timestamp,
         event_type=event_type,
@@ -269,6 +292,7 @@ def parse_event(raw_text: str) -> TechLogEvent | None:
         raw_text=raw_text,
         description=description,
         duration_us=duration_us,
+        func=func,
     )
 
 
