@@ -1,0 +1,5 @@
+10:00.000,EXCP,1,level=ERROR,process=123,OSThread=456,Usr="ТестовыйПользователь",Context="Документ.ЗаказКлиента",Descr="Первая ошибка"
+10:00.100,SDBL,2,level=INFO,process=123,OSThread=456,Usr="ТестовыйПользователь",Context="Документ.ЗаказКлиента",Descr="Запрос перед второй ошибкой"
+10:00.200,EXCP,3,level=ERROR,process=123,OSThread=456,Usr="ТестовыйПользователь",Context="Документ.ЗаказКлиента",Descr="Последняя ошибка"
+10:00.300,SDBL,4,level=INFO,process=123,OSThread=456,Usr="ТестовыйПользователь",Context="Документ.ЗаказКлиента",Descr="Запрос после ошибки"
+
