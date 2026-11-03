@@ -1,21 +1,40 @@
+import argparse
 import os
 import threading
 import time
-from pprint import pprint
 from contextlib import redirect_stdout
+from pathlib import Path
+from pprint import pprint
 
 import psutil
 
 from unified_analysis import analyze_techlog_file
 
 
-LOG_FILE = r"1c_logs\1cv8c_16208\26110121.log"
-REPORT_FILE = "analysis_result.txt"
-
-
 def main():
-    process = psutil.Process(os.getpid())
+    parser = argparse.ArgumentParser(description="Анализ технологического журнала 1С")
+    parser.add_argument(
+        "log_file",
+        help="Путь к технологическому журналу 1С",
+    )
+    parser.add_argument(
+        "report_file",
+        nargs="?",
+        default="analysis_result.txt",
+        help="Путь к итоговому отчёту",
+    )
 
+    args = parser.parse_args()
+
+    log_file = Path(args.log_file)
+    report_file = Path(args.report_file)
+
+    if not log_file.is_file():
+        parser.error(f"Файл журнала не найден: {log_file}")
+
+    report_file.parent.mkdir(parents=True, exist_ok=True)
+
+    process = psutil.Process(os.getpid())
     peak_memory = 0
     stop_monitoring = threading.Event()
 
@@ -37,7 +56,7 @@ def main():
     started = time.perf_counter()
 
     try:
-        result = analyze_techlog_file(LOG_FILE)
+        result = analyze_techlog_file(str(log_file))
     finally:
         elapsed = time.perf_counter() - started
         stop_monitoring.set()
@@ -45,7 +64,7 @@ def main():
 
     final_memory = process.memory_info().rss / 1024 / 1024
 
-    with open(REPORT_FILE, "w", encoding="utf-8") as report:
+    with report_file.open("w", encoding="utf-8") as report:
         with redirect_stdout(report):
             print("========== РЕЗУЛЬТАТ АНАЛИЗА ==========")
 
@@ -72,7 +91,7 @@ def main():
             print("\n========== ТОП-10 ТАБЛИЦ ==========")
             pprint(dict(list(result["sql_tables"].items())[:10]))
 
-    print(f"Отчёт сохранён: {os.path.abspath(REPORT_FILE)}")
+    print(f"Отчёт сохранён: {report_file.resolve()}")
     print(f"Всего событий: {result['total_events']:,}")
     print(f"Время: {elapsed:.2f} сек.")
     print(f"Пиковая память: {peak_memory:.2f} МБ")
