@@ -79,8 +79,42 @@ def main():
             print("\n========== СОБЫТИЯ ПО ТИПАМ ==========")
             pprint(result["by_type"])
 
-            print("\n========== ПРОИЗВОДИТЕЛЬНОСТЬ ==========")
-            pprint(result["performance"])
+            performance = result["performance"]
+
+            lifecycle_types = {
+                "PROC",
+                "SESN.Attach",
+                "SESN.Start",
+                "SESN.Finish",
+            }
+
+            event_performance = {
+                event_type: stats
+                for event_type, stats in performance["by_event_type"].items()
+                if event_type not in lifecycle_types
+            }
+
+            lifecycle_performance = {
+                event_type: stats
+                for event_type, stats in performance["by_event_type"].items()
+                if event_type in lifecycle_types
+            }
+
+            print("\n========== СТАТИСТИКА ДЛИТЕЛЬНОСТЕЙ ПО ТИПАМ СОБЫТИЙ ==========")
+            print(
+                "Примечание: длительности сгруппированы по типам событий. "
+                "Их семантика может различаться, поэтому значения "
+                "не следует напрямую сравнивать между разными типами."
+            )
+            pprint(event_performance)
+
+            print("\n========== ЖИЗНЕННЫЙ ЦИКЛ ПРОЦЕССОВ И СЕАНСОВ ==========")
+            print(
+                "Примечание: события PROC и SESN вынесены отдельно, "
+                "поскольку могут отражать жизненный цикл процессов и сеансов, "
+                "а не длительность отдельных операций."
+            )
+            pprint(lifecycle_performance)
 
             print("\n========== СТАТИСТИКА SQL ==========")
             pprint(result["sql_performance"])

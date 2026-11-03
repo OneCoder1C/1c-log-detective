@@ -66,3 +66,10 @@ tests/test_report*.txt
 *.log.zip
 *.log.gz
 *.log.7z
+
+# Local real-log analysis reports
+reports/
+
+# Generated demonstration reports
+test_logs/*report*.txt
+test_logs/demo_run.txt
