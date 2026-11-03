@@ -1,5 +1,4 @@
 import time
-
 import sqlite3
 
 from sql_analysis import (
@@ -30,6 +29,10 @@ class StreamingPerformanceAnalyzer:
         self.table_write_time = 0.0
         self.commit_time = 0.0
 
+        self.max_duration_buffer = 0
+        self.max_sql_buffer = 0
+        self.max_table_buffer = 0
+
         self._create_tables()
 
         self.connection.executescript(
@@ -46,19 +49,18 @@ class StreamingPerformanceAnalyzer:
             """
             CREATE TABLE IF NOT EXISTS durations (
                 event_type TEXT NOT NULL,
-                duration_us INTEGER NOT NULL
+                duration_us INTEGER
             );
 
             CREATE TABLE IF NOT EXISTS sql_stats (
                 sql_type TEXT NOT NULL,
                 normalized_sql TEXT NOT NULL,
-                duration_us INTEGER NOT NULL
+                duration_us INTEGER
             );
-
 
             CREATE TABLE IF NOT EXISTS table_stats (
                 table_name TEXT NOT NULL,
-                duration_us INTEGER NOT NULL
+                duration_us INTEGER
             );
             """
         )
@@ -71,9 +73,8 @@ class StreamingPerformanceAnalyzer:
             """
             CREATE INDEX IF NOT EXISTS idx_sql_stats_query
             ON sql_stats(normalized_sql)
-        """
+            """
         )
-
         self.connection.commit()
 
     def _create_duration_index(self):
@@ -102,17 +103,17 @@ class StreamingPerformanceAnalyzer:
         """Записывает накопленные данные в SQLite и измеряет время операций."""
 
         self.max_duration_buffer = max(
-            getattr(self, "max_duration_buffer", 0),
+            self.max_duration_buffer,
             len(self.duration_buffer),
         )
 
         self.max_sql_buffer = max(
-            getattr(self, "max_sql_buffer", 0),
+            self.max_sql_buffer,
             len(self.sql_buffer),
         )
 
         self.max_table_buffer = max(
-            getattr(self, "max_table_buffer", 0),
+            self.max_table_buffer,
             len(self.table_buffer),
         )
 
@@ -156,19 +157,17 @@ class StreamingPerformanceAnalyzer:
         self.commit_time += time.perf_counter() - start
 
     def add_event(self, event):
-        """Добавляет событие в буфер статистики."""
+        """Добавляет событие в буферы статистики."""
 
         duration = event.duration_us
 
-        if duration is None:
-            return
+        if duration is not None:
+            duration_group = event.event_type
 
-        duration_group = event.event_type
+            if event.event_type == "SESN" and event.func:
+                duration_group = f"SESN.{event.func}"
 
-        if event.event_type == "SESN" and event.func:
-            duration_group = f"SESN.{event.func}"
-
-        self.duration_buffer.append((duration_group, duration))
+            self.duration_buffer.append((duration_group, duration))
 
         if event.event_type in {"SDBL", "DBV8DBEng"}:
             sql = extract_sql(event.raw_text)
@@ -184,10 +183,11 @@ class StreamingPerformanceAnalyzer:
                     for table in extract_sql_tables(sql):
                         self.table_buffer.append((table, duration))
 
-                        if len(self.table_buffer) >= self.batch_size:
-                            self.flush()
-
-        if len(self.duration_buffer) >= self.batch_size:
+        if (
+            len(self.duration_buffer) >= self.batch_size
+            or len(self.sql_buffer) >= self.batch_size
+            or len(self.table_buffer) >= self.batch_size
+        ):
             self.flush()
 
     def _duration_stats(self, table, group_column):
@@ -197,10 +197,17 @@ class StreamingPerformanceAnalyzer:
             SELECT
                 {group_column},
                 COUNT(*),
+                COUNT(duration_us),
+                COUNT(*) - COUNT(duration_us),
                 SUM(duration_us),
                 MAX(duration_us),
                 AVG(duration_us),
-                SUM(CASE WHEN duration_us >= ? THEN 1 ELSE 0 END)
+                SUM(
+                    CASE
+                        WHEN duration_us >= ? THEN 1
+                        ELSE 0
+                    END
+                )
             FROM {table}
             GROUP BY {group_column}
         """
@@ -208,23 +215,41 @@ class StreamingPerformanceAnalyzer:
         result = {}
 
         for row in self.connection.execute(query, (SLOW_THRESHOLD_US,)):
-            key, count, total, maximum, average, slow_count = row
+            (
+                key,
+                count,
+                measured_count,
+                missing_duration_count,
+                total,
+                maximum,
+                average,
+                slow_count,
+            ) = row
 
-            p95_index = max(1, int(count * 0.95 + 0.999999))
+            p95 = None
 
-            p95 = self.connection.execute(
-                f"""
-                SELECT duration_us
-                FROM {table}
-                WHERE {group_column} = ?
-                ORDER BY duration_us
-                LIMIT 1 OFFSET ?
-                """,
-                (key, p95_index - 1),
-            ).fetchone()[0]
+            if measured_count > 0:
+                p95_index = max(
+                    1,
+                    int(measured_count * 0.95 + 0.999999),
+                )
+
+                p95 = self.connection.execute(
+                    f"""
+                    SELECT duration_us
+                    FROM {table}
+                    WHERE {group_column} = ?
+                      AND duration_us IS NOT NULL
+                    ORDER BY duration_us
+                    LIMIT 1 OFFSET ?
+                    """,
+                    (key, p95_index - 1),
+                ).fetchone()[0]
 
             result[key] = {
                 "count": count,
+                "measured_count": measured_count,
+                "missing_duration_count": missing_duration_count,
                 "total_duration_us": total,
                 "max_duration_us": maximum,
                 "avg_duration_us": average,
@@ -251,9 +276,20 @@ class StreamingPerformanceAnalyzer:
         self.flush()
 
         query = """
-            SELECT sql_type, COUNT(*), SUM(duration_us),
-                   MAX(duration_us), AVG(duration_us),
-                   SUM(CASE WHEN duration_us >= ? THEN 1 ELSE 0 END)
+            SELECT
+                sql_type,
+                COUNT(*),
+                COUNT(duration_us),
+                COUNT(*) - COUNT(duration_us),
+                SUM(duration_us),
+                MAX(duration_us),
+                AVG(duration_us),
+                SUM(
+                    CASE
+                        WHEN duration_us >= ? THEN 1
+                        ELSE 0
+                    END
+                )
             FROM sql_stats
             GROUP BY sql_type
         """
@@ -261,22 +297,41 @@ class StreamingPerformanceAnalyzer:
         result = {}
 
         for row in self.connection.execute(query, (SLOW_THRESHOLD_US,)):
-            sql_type, count, total, maximum, average, slow_count = row
+            (
+                sql_type,
+                count,
+                measured_count,
+                missing_duration_count,
+                total,
+                maximum,
+                average,
+                slow_count,
+            ) = row
 
-            p95_index = max(1, int(count * 0.95 + 0.999999))
+            p95 = None
 
-            p95 = self.connection.execute(
-                """
-                SELECT duration_us FROM sql_stats
-                WHERE sql_type = ?
-                ORDER BY duration_us
-                LIMIT 1 OFFSET ?
-                """,
-                (sql_type, p95_index - 1),
-            ).fetchone()[0]
+            if measured_count > 0:
+                p95_index = max(
+                    1,
+                    int(measured_count * 0.95 + 0.999999),
+                )
+
+                p95 = self.connection.execute(
+                    """
+                    SELECT duration_us
+                    FROM sql_stats
+                    WHERE sql_type = ?
+                      AND duration_us IS NOT NULL
+                    ORDER BY duration_us
+                    LIMIT 1 OFFSET ?
+                    """,
+                    (sql_type, p95_index - 1),
+                ).fetchone()[0]
 
             result[sql_type] = {
                 "count": count,
+                "measured_count": measured_count,
+                "missing_duration_count": missing_duration_count,
                 "total_duration_us": total,
                 "max_duration_us": maximum,
                 "avg_duration_us": average,
@@ -295,9 +350,21 @@ class StreamingPerformanceAnalyzer:
             raise ValueError("limit не может быть отрицательным")
 
         query = """
-            SELECT normalized_sql, sql_type, COUNT(*),
-                   SUM(duration_us), MAX(duration_us), AVG(duration_us),
-                   SUM(CASE WHEN duration_us >= ? THEN 1 ELSE 0 END)
+            SELECT
+                normalized_sql,
+                sql_type,
+                COUNT(*),
+                COUNT(duration_us),
+                COUNT(*) - COUNT(duration_us),
+                SUM(duration_us),
+                MAX(duration_us),
+                AVG(duration_us),
+                SUM(
+                    CASE
+                        WHEN duration_us >= ? THEN 1
+                        ELSE 0
+                    END
+                )
             FROM sql_stats
             GROUP BY normalized_sql, sql_type
             ORDER BY SUM(duration_us) DESC
@@ -310,25 +377,46 @@ class StreamingPerformanceAnalyzer:
             query,
             (SLOW_THRESHOLD_US, limit),
         ):
-            sql, sql_type, count, total, maximum, average, slow_count = row
+            (
+                sql,
+                sql_type,
+                count,
+                measured_count,
+                missing_duration_count,
+                total,
+                maximum,
+                average,
+                slow_count,
+            ) = row
 
-            p95_index = max(1, int(count * 0.95 + 0.999999))
+            p95 = None
 
-            p95 = self.connection.execute(
-                """
-                SELECT duration_us FROM sql_stats
-                WHERE normalized_sql = ? AND sql_type = ?
-                ORDER BY duration_us
-                LIMIT 1 OFFSET ?
-                """,
-                (sql, sql_type, p95_index - 1),
-            ).fetchone()[0]
+            if measured_count > 0:
+                p95_index = max(
+                    1,
+                    int(measured_count * 0.95 + 0.999999),
+                )
+
+                p95 = self.connection.execute(
+                    """
+                    SELECT duration_us
+                    FROM sql_stats
+                    WHERE normalized_sql = ?
+                      AND sql_type = ?
+                      AND duration_us IS NOT NULL
+                    ORDER BY duration_us
+                    LIMIT 1 OFFSET ?
+                    """,
+                    (sql, sql_type, p95_index - 1),
+                ).fetchone()[0]
 
             result.append(
                 {
                     "normalized_sql": sql,
                     "sql_type": sql_type,
                     "count": count,
+                    "measured_count": measured_count,
+                    "missing_duration_count": missing_duration_count,
                     "total_duration_us": total,
                     "max_duration_us": maximum,
                     "avg_duration_us": average,
@@ -351,6 +439,8 @@ class StreamingPerformanceAnalyzer:
             SELECT
                 table_name,
                 COUNT(*),
+                COUNT(duration_us),
+                COUNT(*) - COUNT(duration_us),
                 SUM(duration_us),
                 MAX(duration_us),
                 AVG(duration_us)
@@ -361,10 +451,20 @@ class StreamingPerformanceAnalyzer:
         )
 
         for row in rows:
-            table_name, count, total, maximum, average = row
+            (
+                table_name,
+                count,
+                measured_count,
+                missing_duration_count,
+                total,
+                maximum,
+                average,
+            ) = row
 
             result[table_name] = {
                 "count": count,
+                "measured_count": measured_count,
+                "missing_duration_count": missing_duration_count,
                 "total_duration_us": total,
                 "max_duration_us": maximum,
                 "avg_duration_us": average,
@@ -375,7 +475,11 @@ class StreamingPerformanceAnalyzer:
     def close(self):
         """Записывает остатки буферов и закрывает соединение."""
 
+        if self.connection is None:
+            return
+
         self.flush()
+
         print("\nСтатистика SQLite:")
         print(f"Количество flush: {self.flush_count}")
         print(f"Запись durations: {self.duration_write_time:.2f} сек.")
@@ -385,7 +489,9 @@ class StreamingPerformanceAnalyzer:
         print(f"Максимальный duration_buffer: {self.max_duration_buffer}")
         print(f"Максимальный sql_buffer: {self.max_sql_buffer}")
         print(f"Максимальный table_buffer: {self.max_table_buffer}")
+
         self.connection.close()
+        self.connection = None
 
     def __enter__(self):
         """Поддерживает конструкцию with."""

@@ -1,5 +1,15 @@
 from techlog import TechLogEvent
+import pytest
+
 from streaming_performance import StreamingPerformanceAnalyzer
+
+
+@pytest.fixture
+def analyzer(tmp_path):
+    database_path = tmp_path / "test_streaming_performance.db"
+
+    with StreamingPerformanceAnalyzer(str(database_path)) as instance:
+        yield instance
 
 
 def make_event(duration_us):
@@ -168,3 +178,70 @@ def test_streaming_performance_counts_slow_sql():
 
     assert result[0]["count"] == 5
     assert result[0]["slow_count"] == 3
+
+
+def test_sql_without_duration_is_counted():
+    with StreamingPerformanceAnalyzer() as analyzer:
+        analyzer.add_event(
+            make_sql_event(
+                None,
+                "SELECT * FROM Table1 WHERE ID = 10",
+            )
+        )
+
+        stats = analyzer.get_sql_performance()
+
+    assert stats["SELECT"]["count"] == 1
+    assert stats["SELECT"]["measured_count"] == 0
+    assert stats["SELECT"]["missing_duration_count"] == 1
+    assert stats["SELECT"]["total_duration_us"] is None
+    assert stats["SELECT"]["p95_duration_us"] is None
+
+
+def test_sql_without_duration_is_counted(analyzer):
+    analyzer.add_event(
+        make_sql_event(
+            None,
+            "SELECT * FROM Table1 WHERE ID = 10",
+        )
+    )
+
+    stats = analyzer.get_sql_performance()
+
+    assert stats["SELECT"]["count"] == 1
+    assert stats["SELECT"]["measured_count"] == 0
+    assert stats["SELECT"]["missing_duration_count"] == 1
+    assert stats["SELECT"]["total_duration_us"] is None
+    assert stats["SELECT"]["p95_duration_us"] is None
+
+
+def test_slow_sql_and_tables_ignore_missing_durations(analyzer):
+    analyzer.connection.executemany(
+        "INSERT INTO sql_stats VALUES (?, ?, ?)",
+        [
+            ("SELECT", "SELECT * FROM Table1", None),
+            ("SELECT", "SELECT * FROM Table1", 15_000),
+        ],
+    )
+
+    analyzer.connection.executemany(
+        "INSERT INTO table_stats VALUES (?, ?)",
+        [
+            ("Table1", None),
+            ("Table1", 15_000),
+        ],
+    )
+
+    sql_stats = analyzer.get_slow_sql()
+    table_stats = analyzer.get_sql_tables()
+
+    assert sql_stats[0]["count"] == 2
+    assert sql_stats[0]["measured_count"] == 1
+    assert sql_stats[0]["missing_duration_count"] == 1
+    assert sql_stats[0]["total_duration_us"] == 15_000
+    assert sql_stats[0]["p95_duration_us"] == 15_000
+
+    assert table_stats["Table1"]["count"] == 2
+    assert table_stats["Table1"]["measured_count"] == 1
+    assert table_stats["Table1"]["missing_duration_count"] == 1
+    assert table_stats["Table1"]["total_duration_us"] == 15_000
