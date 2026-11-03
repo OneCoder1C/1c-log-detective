@@ -35,18 +35,15 @@ class StreamingPerformanceAnalyzer:
 
         self._create_tables()
 
-        self.connection.executescript(
-            """
+        self.connection.executescript("""
             DELETE FROM durations;
             DELETE FROM sql_stats;
             DELETE FROM table_stats;
-            """
-        )
+            """)
         self.connection.commit()
 
     def _create_tables(self):
-        self.connection.executescript(
-            """
+        self.connection.executescript("""
             CREATE TABLE IF NOT EXISTS durations (
                 event_type TEXT NOT NULL,
                 duration_us INTEGER
@@ -62,41 +59,34 @@ class StreamingPerformanceAnalyzer:
                 table_name TEXT NOT NULL,
                 duration_us INTEGER
             );
-            """
-        )
+            """)
         self.connection.commit()
 
     def _create_sql_index(self):
         """Создаёт индекс SQL-запросов после массовой загрузки данных."""
 
-        self.connection.execute(
-            """
+        self.connection.execute("""
             CREATE INDEX IF NOT EXISTS idx_sql_stats_query
             ON sql_stats(normalized_sql)
-            """
-        )
+            """)
         self.connection.commit()
 
     def _create_duration_index(self):
         """Создаёт индекс длительности после массовой загрузки."""
 
-        self.connection.execute(
-            """
+        self.connection.execute("""
             CREATE INDEX IF NOT EXISTS idx_durations_type
             ON durations(event_type)
-            """
-        )
+            """)
         self.connection.commit()
 
     def _create_table_index(self):
         """Создаёт индекс таблиц после массовой загрузки."""
 
-        self.connection.execute(
-            """
+        self.connection.execute("""
             CREATE INDEX IF NOT EXISTS idx_table_stats_name
             ON table_stats(table_name)
-            """
-        )
+            """)
         self.connection.commit()
 
     def flush(self):
@@ -434,8 +424,7 @@ class StreamingPerformanceAnalyzer:
 
         result = {}
 
-        rows = self.connection.execute(
-            """
+        rows = self.connection.execute("""
             SELECT
                 table_name,
                 COUNT(*),
@@ -447,8 +436,7 @@ class StreamingPerformanceAnalyzer:
             FROM table_stats
             GROUP BY table_name
             ORDER BY SUM(duration_us) DESC
-            """
-        )
+            """)
 
         for row in rows:
             (
