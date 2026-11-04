@@ -223,3 +223,102 @@ def test_log_without_events(tmp_path):
     assert "Ошибок не обнаружено" in result.stdout
     assert "Рекомендаций нет." in result.stdout
     assert report_file.exists()
+
+
+def test_techlog_mode(tmp_path):
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+
+    project_dir = Path(__file__).resolve().parent.parent
+    log_file = project_dir / "demo" / "sample_techlog.txt"
+    report_file = tmp_path / "correlated_report.txt"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(project_dir / "main.py"),
+            str(log_file),
+            str(report_file),
+            "TECHLOG",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
+        cwd=project_dir,
+    )
+
+    assert result.returncode == 0
+    assert "Режим: анализ технологического журнала 1С" in result.stdout
+    assert report_file.exists()
+
+    report = report_file.read_text(encoding="utf-8")
+    assert "РАЗБОР ИНЦИДЕНТА 1С" in report
+    assert "Тип события: EXCP" in report
+    assert "Тип события: EXCP" in report
+
+
+def test_techlog_without_exceptions(tmp_path):
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+
+    project_dir = Path(__file__).resolve().parent.parent
+    log_file = tmp_path / "no_exceptions.log"
+    report_file = tmp_path / "no_exceptions_report.txt"
+
+    log_file.write_text(
+        "Просто текст журнала без исключений\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(project_dir / "main.py"),
+            str(log_file),
+            str(report_file),
+            "TECHLOG",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
+        cwd=project_dir,
+    )
+
+    assert result.returncode == 0
+    assert "В журнале не найдено исключений EXCP." in result.stdout
+    assert report_file.exists()
+    assert "В журнале не найдено исключений EXCP." in report_file.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_techlog_missing_file(tmp_path):
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+
+    project_dir = Path(__file__).resolve().parent.parent
+    log_file = tmp_path / "missing_techlog.log"
+    report_file = tmp_path / "missing_report.txt"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(project_dir / "main.py"),
+            str(log_file),
+            str(report_file),
+            "TECHLOG",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
+        cwd=project_dir,
+    )
+
+    assert result.returncode != 0
+    assert "Не удалось найти файл" in result.stdout

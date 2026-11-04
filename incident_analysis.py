@@ -3,6 +3,8 @@ from collections.abc import Iterable
 from techlog import TechLogEvent, extract_fields
 from exception_groups import normalize_exception
 
+from incident_correlation import build_incident_chain, analyze_incident_evidence
+
 
 def build_incident_timeline(
     events: Iterable[TechLogEvent],
@@ -174,3 +176,127 @@ def analyze_incident_file(log_file, window=20):
             window=window,
         )
     )
+
+
+def analyze_incident_file_correlated(log_file, window=20):
+    """Потоково находит последнее EXCP и строит коррелированную цепочку."""
+
+    from collections import deque
+
+    from techlog import iter_techlog_events, parse_event
+
+    recent_events = deque(maxlen=window)
+    last_incident = None
+    events_after_error = 0
+
+    with open(log_file, "r", encoding="utf-8", errors="replace") as file:
+        for raw_event in iter_techlog_events(file):
+            event = parse_event(raw_event)
+
+            if event is None:
+                continue
+
+            if last_incident is not None and events_after_error < window:
+                last_incident["events"].append(event)
+                events_after_error += 1
+
+            if event.event_type == "EXCP":
+                incident_events = list(recent_events) + [event]
+
+                last_incident = {
+                    "events": incident_events,
+                    "error_index": len(incident_events) - 1,
+                }
+
+                events_after_error = 0
+
+            recent_events.append(event)
+
+    if last_incident is None:
+        return {
+            "error": "В журнале не найдено исключений EXCP.",
+            "chain": None,
+            "evidence": None,
+        }
+
+    chain = build_incident_chain(
+        last_incident["events"],
+        error_index=last_incident["error_index"],
+        window=window,
+    )
+
+    return {
+        "error": None,
+        "chain": chain,
+        "evidence": analyze_incident_evidence(chain),
+    }
+
+
+def format_correlated_incident(incident: dict) -> str:
+    """Формирует отчёт с основной цепочкой и сопутствующими событиями."""
+
+    if incident.get("error"):
+        return incident["error"]
+
+    chain = incident["chain"]
+    evidence = incident["evidence"]
+
+    target = next(
+        event
+        for event in chain["events"]
+        if event["event_type"] == "EXCP" and event["index"] == chain["error_index"]
+    )
+
+    lines = [
+        "РАЗБОР ИНЦИДЕНТА 1С",
+        "=" * 60,
+        f"Время ошибки: {target['timestamp']}",
+        f"Тип события: {target['event_type']}",
+        f"Пользователь: {chain['user'] or 'Не определён'}",
+        f"Процесс: {chain['process'] or 'Не определён'}",
+        f"Поток: {chain['thread'] or 'Не определён'}",
+        f"Контекст: {chain['context'] or 'Не определён'}",
+        f"Описание: {target['description']}",
+        "",
+        "ОСНОВНЫЕ ДИАГНОСТИЧЕСКИЕ ПРИЗНАКИ",
+        "-" * 60,
+    ]
+
+    for finding in evidence["findings"]:
+        lines.append(
+            f"{finding['title']} "
+            f"(событий: {finding['count']}, "
+            f"оценка: {finding['confidence']})"
+        )
+
+    lines.extend(
+        [
+            "",
+            "СОПУТСТВУЮЩИЕ СОБЫТИЯ ДРУГИХ ПОТОКОВ",
+            "-" * 60,
+        ]
+    )
+
+    if evidence["related_findings"]:
+        for finding in evidence["related_findings"]:
+            lines.append(f"{finding['event_type']}: {finding['count']} событий")
+
+            for event in finding["events"]:
+                lines.append(
+                    f"    {event['timestamp']} | "
+                    f"Поток: {event['thread']} | "
+                    f"{event.get('sql_type', event['event_type'])}"
+                )
+    else:
+        lines.append("Сопутствующие события не обнаружены.")
+
+    lines.extend(
+        [
+            "",
+            "Примечание: временная близость событий не доказывает",
+            "причинно-следственную связь. Сопутствующие события",
+            "показаны отдельно и не входят в основную цепочку.",
+        ]
+    )
+
+    return "\n".join(lines)

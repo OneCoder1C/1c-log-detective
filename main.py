@@ -1,14 +1,90 @@
 import sys
 
+from user_analysis import analyze_user_events, format_user_analysis
+
+from incident_analysis import (
+    analyze_incident_file_correlated,
+    format_correlated_incident,
+)
+
+
+def analyze_techlog(log_file, report_file):
+    print("Режим: анализ технологического журнала 1С")
+    print("=" * 40)
+
+    try:
+        incident = analyze_incident_file_correlated(log_file)
+
+        if incident["error"]:
+            report = incident["error"]
+        else:
+            report = format_correlated_incident(incident)
+
+        print(report)
+
+        with open(report_file, "w", encoding="utf-8") as file:
+            file.write(report + "\n")
+
+        print(f"\nОтчёт сохранён в файл {report_file}")
+
+    except FileNotFoundError:
+        print(f"Не удалось найти файл: {log_file}")
+        sys.exit(1)
+    except OSError as error:
+        print(f"Ошибка чтения или сохранения файла: {error}")
+        sys.exit(1)
+
+
+def analyze_user(log_file, user, report_file):
+    print("Режим: история активности пользователя 1С")
+    print("=" * 40)
+
+    try:
+        result = analyze_user_events(log_file, user=user)
+        report = format_user_analysis(result)
+
+        print(report)
+
+        with open(report_file, "w", encoding="utf-8") as file:
+            file.write(report + "\n")
+
+        print(f"\nОтчёт сохранён в файл {report_file}")
+
+    except FileNotFoundError:
+        print(f"Не удалось найти файл: {log_file}")
+        sys.exit(1)
+    except OSError as error:
+        print(f"Ошибка чтения или сохранения файла: {error}")
+        sys.exit(1)
+
 
 def main():
     print("1C Log Detective")
     print("=" * 40)
 
     log_file = sys.argv[1] if len(sys.argv) > 1 else "sample_log.txt"
-    report_file = sys.argv[2] if len(sys.argv) > 2 else "report.txt"
-    event_filter = sys.argv[3].upper() if len(sys.argv) > 3 else "ALL"
 
+    if len(sys.argv) > 2 and sys.argv[2].upper() == "USER":
+        if len(sys.argv) < 4:
+            print(
+                "Укажи имя пользователя: "
+                'python main.py "путь_к_логу" USER "Имя пользователя"'
+            )
+            sys.exit(1)
+
+        user = sys.argv[3]
+        report_file = sys.argv[4] if len(sys.argv) > 4 else "user_report.txt"
+
+        analyze_user(log_file, user, report_file)
+        return
+
+    report_file = sys.argv[2] if len(sys.argv) > 2 else "report.txt"
+
+    if len(sys.argv) > 3 and sys.argv[3].upper() == "TECHLOG":
+        analyze_techlog(log_file, report_file)
+        return
+
+    event_filter = sys.argv[3].upper() if len(sys.argv) > 3 else "ALL"
     allowed_filters = ["ALL", "ERROR", "WARNING", "CRITICAL"]
 
     if event_filter not in allowed_filters:

@@ -73,3 +73,5 @@ reports/
 # Generated demonstration reports
 test_logs/*report*.txt
 test_logs/demo_run.txt
+user_history.txt
+user_report.txt

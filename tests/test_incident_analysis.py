@@ -1,5 +1,6 @@
 from techlog import TechLogEvent
 from incident_analysis import build_incident_timeline
+from incident_analysis import format_correlated_incident
 
 
 def test_finds_last_exception():
@@ -134,3 +135,48 @@ def test_incident_file_without_exceptions(tmp_path):
     report = analyze_incident_file(log_file)
 
     assert report == "В журнале не найдено исключений EXCP."
+
+
+def test_format_correlated_incident_finds_target_exception_by_original_index():
+    incident = {
+        "error": None,
+        "chain": {
+            "error_index": 20,
+            "user": "Иванов",
+            "process": "1cv8c",
+            "thread": "13720",
+            "context": "",
+            "events": [
+                {
+                    "index": 18,
+                    "timestamp": "10:00.000",
+                    "event_type": "SDBL",
+                    "description": "",
+                },
+                {
+                    "index": 20,
+                    "timestamp": "10:00.100",
+                    "event_type": "EXCP",
+                    "description": "Ошибка блокировки",
+                },
+                {
+                    "index": 21,
+                    "timestamp": "10:00.200",
+                    "event_type": "SDBL",
+                    "description": "",
+                },
+            ],
+        },
+        "evidence": {
+            "findings": [],
+            "related_findings": [],
+            "related_events_count": 0,
+        },
+    }
+
+    report = format_correlated_incident(incident)
+
+    assert "Тип события: EXCP" in report
+    assert "Время ошибки: 10:00.100" in report
+    assert "Ошибка блокировки" in report
+    assert "Тип события: SDBL" not in report

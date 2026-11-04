@@ -17,26 +17,178 @@ def get_correlation_fields(event) -> dict:
     }
 
 
+def is_same_process_thread(anchor: dict, candidate: dict) -> bool:
+    """Проверяет совпадение процесса и потока."""
+    return (
+        bool(anchor["process"])
+        and bool(anchor["thread"])
+        and candidate["process"] == anchor["process"]
+        and candidate["thread"] == anchor["thread"]
+    )
+
+
 def is_same_execution(anchor: dict, candidate: dict) -> bool:
-    """Проверяет, относятся ли события к одному процессу и потоку."""
+    """Проверяет принадлежность событий одному исполнению."""
 
-    if not anchor["process"] or not anchor["thread"]:
+    if not is_same_process_thread(anchor, candidate):
         return False
 
-    if candidate["process"] != anchor["process"]:
-        return False
-
-    if candidate["thread"] != anchor["thread"]:
-        return False
-
-    if not candidate["process"] or not candidate["thread"]:
-        return False
-
+    # Если оба пользователя известны, они должны совпадать.
     if anchor["user"] and candidate["user"]:
-        if anchor["user"] != candidate["user"]:
-            return False
+        return anchor["user"] == candidate["user"]
 
+    # Если хотя бы один пользователь неизвестен,
+    # совпадение процесса и потока позволяет оставить событие
+    # как контекстное, но не подтверждает пользователя.
     return True
+
+
+def build_incident_chain(
+    events: list,
+    error_index: int,
+    window: int = 20,
+) -> dict:
+    """Строит цепочку событий вокруг EXCP с учётом границ инцидентов."""
+
+    if not 0 <= error_index < len(events):
+        raise IndexError("Индекс события находится за пределами списка.")
+
+    if window < 0:
+        raise ValueError("Размер окна не может быть отрицательным.")
+
+    error_event = events[error_index]
+
+    if error_event.event_type != "EXCP":
+        raise ValueError("Центральное событие должно иметь тип EXCP.")
+
+    anchor = get_correlation_fields(error_event)
+
+    # Определяем левую границу с учётом предыдущего исключения.
+    start_index = max(0, error_index - window)
+
+    for index in range(error_index - 1, start_index - 1, -1):
+        event = events[index]
+        fields = get_correlation_fields(event)
+
+        if event.event_type == "EXCP" and is_same_process_thread(anchor, fields):
+            start_index = error_index
+            break
+
+    # Определяем правую границу: ближайшее следующее
+    # исключение в том же процессе и потоке.
+    end_index = min(len(events), error_index + window + 1)
+
+    for index in range(error_index + 1, end_index):
+        event = events[index]
+        fields = get_correlation_fields(event)
+
+        if event.event_type == "EXCP" and is_same_process_thread(anchor, fields):
+            end_index = index
+            break
+
+    selected_indices = []
+
+    for index in range(start_index, end_index):
+        if index == error_index:
+            selected_indices.append(index)
+            continue
+
+        event = events[index]
+
+        if event.event_type not in SUPPORTED_EVENT_TYPES:
+            continue
+
+        fields = get_correlation_fields(event)
+
+        if is_same_execution(anchor, fields):
+            selected_indices.append(index)
+
+    chain = []
+
+    for index in selected_indices:
+        event = events[index]
+        fields = get_correlation_fields(event)
+
+        user_relation = "same" if anchor["user"] and fields["user"] else "unknown"
+
+        item = {
+            "index": index,
+            "timestamp": event.timestamp,
+            "event_type": event.event_type,
+            "level": event.level,
+            "description": event.description,
+            "user": fields["user"],
+            "process": fields["process"],
+            "thread": fields["thread"],
+            "context": fields["context"],
+            "user_relation": user_relation,
+            "is_error": index == error_index,
+        }
+
+        item.update(extract_event_details(event))
+        chain.append(item)
+    # Дополнительные события того же пользователя и процесса,
+    # но из других потоков.
+    related_events = []
+    for index in range(
+        max(0, error_index - window),
+        min(len(events), error_index + window + 1),
+    ):
+        if index == error_index:
+            continue
+
+        event = events[index]
+
+        if event.event_type not in SUPPORTED_EVENT_TYPES:
+            continue
+
+        fields = get_correlation_fields(event)
+
+        same_process = (
+            bool(anchor["process"]) and fields["process"] == anchor["process"]
+        )
+
+        same_known_user = bool(anchor["user"]) and fields["user"] == anchor["user"]
+
+        different_thread = (
+            bool(fields["thread"]) and fields["thread"] != anchor["thread"]
+        )
+
+        if same_process and same_known_user and different_thread:
+            item = {
+                "index": index,
+                "timestamp": event.timestamp,
+                "event_type": event.event_type,
+                "level": event.level,
+                "description": event.description,
+                "user": fields["user"],
+                "process": fields["process"],
+                "thread": fields["thread"],
+                "context": fields["context"],
+                "user_relation": "same",
+                "is_error": False,
+            }
+
+            item.update(extract_event_details(event))
+            related_events.append(item)
+
+    related_before = [item for item in related_events if item["index"] < error_index]
+
+    related_after = [item for item in related_events if item["index"] > error_index]
+
+    return {
+        "user": anchor["user"],
+        "process": anchor["process"],
+        "thread": anchor["thread"],
+        "context": anchor["context"],
+        "error_index": error_index,
+        "events": chain,
+        "before": [item for item in chain if item["index"] < error_index],
+        "after": [item for item in chain if item["index"] > error_index],
+        "related_events": related_events,
+        "related_before": related_before,
+        "related_after": related_after,
+    }
 
 
 def extract_event_details(event) -> dict:
@@ -64,75 +216,14 @@ def extract_event_details(event) -> dict:
     return details
 
 
-def build_incident_chain(
-    events: list,
-    error_index: int,
-    window: int = 20,
-) -> dict:
-    """Строит цепочку событий вокруг EXCP."""
-
-    if not 0 <= error_index < len(events):
-        raise IndexError("Индекс события находится за пределами списка.")
-
-    if window < 0:
-        raise ValueError("Размер окна не может быть отрицательным.")
-
-    error_event = events[error_index]
-
-    if error_event.event_type != "EXCP":
-        raise ValueError("Центральное событие должно иметь тип EXCP.")
-
-    anchor = get_correlation_fields(error_event)
-
-    start = max(0, error_index - window)
-    end = min(len(events), error_index + window + 1)
-
-    chain = []
-
-    for index in range(start, end):
-        event = events[index]
-
-        if event.event_type not in SUPPORTED_EVENT_TYPES:
-            continue
-
-        fields = get_correlation_fields(event)
-
-        if not is_same_execution(anchor, fields):
-            continue
-
-        item = {
-            "index": index,
-            "timestamp": event.timestamp,
-            "event_type": event.event_type,
-            "level": event.level,
-            "description": event.description,
-            "user": fields["user"],
-            "process": fields["process"],
-            "thread": fields["thread"],
-            "context": fields["context"],
-            "is_error": index == error_index,
-        }
-
-        item.update(extract_event_details(event))
-        chain.append(item)
-
-    return {
-        "user": anchor["user"],
-        "process": anchor["process"],
-        "thread": anchor["thread"],
-        "context": anchor["context"],
-        "error_index": error_index,
-        "events": chain,
-        "before": [item for item in chain if item["index"] < error_index],
-        "after": [item for item in chain if item["index"] > error_index],
-    }
-
-
 def analyze_incident_evidence(chain: dict) -> dict:
-    """Выделяет диагностические признаки вокруг исключения."""
+    """Выделяет диагностические признаки и сопутствующий контекст."""
 
     before = chain["before"]
     after = chain["after"]
+
+    related_before = chain.get("related_before", [])
+    related_after = chain.get("related_after", [])
 
     event_types = ("TLOCK", "SDBL", "DBV8DBEng")
 
@@ -218,8 +309,28 @@ def analyze_incident_evidence(chain: dict) -> dict:
             }
         )
 
+    related_events = related_before + related_after
+
+    related_findings = []
+
+    for event_type in event_types:
+        matched_events = [
+            event for event in related_events if event["event_type"] == event_type
+        ]
+
+        if matched_events:
+            related_findings.append(
+                {
+                    "event_type": event_type,
+                    "count": len(matched_events),
+                    "events": matched_events,
+                }
+            )
+
     return {
         "findings": findings,
+        "related_findings": related_findings,
+        "related_events_count": len(related_events),
         "has_lock_events_before": bool(before_events["TLOCK"]),
         "has_sql_events_before": bool(before_events["SDBL"]),
         "has_dbv8dbeng_events_before": bool(before_events["DBV8DBEng"]),
