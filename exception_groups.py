@@ -1,11 +1,37 @@
 import re
-
 from collections import Counter
 
 
-def normalize_exception(description: str) -> str:
+GUID_PATTERN = re.compile(
+    r"\b[0-9a-fA-F]{8}-"
+    r"[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{12}\b"
+)
+
+EXCEPTION_DETAIL_PATTERN = re.compile(
+    r"не выполнено\s+'([^']+)'",
+    re.IGNORECASE,
+)
+
+EXCEPTION_RESOURCE_PATTERN = re.compile(
+    r"не выполнено\s+'([A-Z][A-Z0-9_]*)'",
+    re.IGNORECASE,
+)
+
+
+def _normalize_description(description: str | None) -> str:
+    """Приводит описание исключения к безопасной строке."""
+    if not isinstance(description, str):
+        return ""
+
+    return " ".join(description.split())
+
+
+def normalize_exception(description: str | None) -> str:
     """Возвращает категорию исключения по его описанию."""
-    text = description.casefold()
+    text = _normalize_description(description).casefold()
 
     if "не удалось заблокировать запись" in text:
         return "Не удалось заблокировать запись"
@@ -16,8 +42,10 @@ def normalize_exception(description: str) -> str:
     if "ошибка программного лицензирования" in text:
         if "ошибка привязки" in text:
             return "Ошибка привязки программной лицензии"
+
         if "срок действия закончился" in text:
             return "Истёк срок действия программной лицензии"
+
         return "Ошибка программного лицензирования"
 
     if "неверно указан пользователь" in text:
@@ -32,38 +60,33 @@ def normalize_exception(description: str) -> str:
     return "Прочие исключения"
 
 
-def extract_guid(description: str) -> str | None:
+def extract_guid(description: str | None) -> str | None:
     """Извлекает GUID из описания исключения."""
-    match = re.search(
-        r"\b[0-9a-fA-F]{8}-"
-        r"[0-9a-fA-F]{4}-"
-        r"[0-9a-fA-F]{4}-"
-        r"[0-9a-fA-F]{4}-"
-        r"[0-9a-fA-F]{12}\b",
-        description,
-    )
+    text = _normalize_description(description)
+    match = GUID_PATTERN.search(text)
 
     return match.group(0) if match else None
 
 
-def get_exception_detail(description: str) -> str:
+def get_exception_detail(description: str | None) -> str:
     """Извлекает и очищает уточнение из описания исключения."""
-    description = " ".join(description.split())
+    text = _normalize_description(description)
 
-    match = re.search(r"не выполнено\s+'([^']+)'", description, re.IGNORECASE)
+    match = EXCEPTION_DETAIL_PATTERN.search(text)
 
     if match:
         return match.group(1).strip()
 
-    if "неверно указан пользователь или пароль" in description.casefold():
+    if "неверно указан пользователь или пароль" in text.casefold():
         return "Неверно указан пользователь или пароль"
 
-    return description.strip(" :")
+    return text.strip(" :")
 
 
-def count_exception_groups(descriptions: list[str]) -> dict[str, int]:
+def count_exception_groups(
+    descriptions: list[str | None],
+) -> dict[str, int]:
     """Подсчитывает исключения по категории и детали."""
-
     groups = Counter()
 
     for description in descriptions:
@@ -76,19 +99,11 @@ def count_exception_groups(descriptions: list[str]) -> dict[str, int]:
     return dict(groups)
 
 
-import re
-
-
-def extract_exception_resource(description: str) -> str | None:
+def extract_exception_resource(
+    description: str | None,
+) -> str | None:
     """Извлекает имя ресурса из описания исключения."""
+    text = _normalize_description(description)
+    match = EXCEPTION_RESOURCE_PATTERN.search(text)
 
-    match = re.search(
-        r"не выполнено\s+'([A-Z][A-Z0-9_]*)'",
-        description,
-        re.IGNORECASE,
-    )
-
-    if match:
-        return match.group(1)
-
-    return None
+    return match.group(1) if match else None

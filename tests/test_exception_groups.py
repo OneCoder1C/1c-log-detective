@@ -1,6 +1,7 @@
 import pytest
 
 from exception_groups import (
+    count_exception_groups,
     extract_exception_resource,
     extract_guid,
     get_exception_detail,
@@ -43,9 +44,6 @@ from exception_groups import (
 )
 def test_normalize_exception(description, expected):
     assert normalize_exception(description) == expected
-
-
-from exception_groups import get_exception_detail
 
 
 def test_get_exception_detail_extracts_table_name():
@@ -97,9 +95,6 @@ def test_get_exception_detail_cleans_extracted_message():
     result = get_exception_detail("Операция не выполнено '  подключение   '")
 
     assert result == "подключение"
-
-
-from exception_groups import count_exception_groups
 
 
 def test_count_exception_groups_separates_table_names():
@@ -156,4 +151,36 @@ def test_extract_exception_resource_activeusers():
 def test_extract_exception_resource_not_found():
     description = "Неверно указан пользователь или пароль"
 
+    assert extract_exception_resource(description) is None
+
+
+@pytest.mark.parametrize(
+    "description",
+    [None, ""],
+)
+def test_normalize_empty_description(description):
+    assert normalize_exception(description) == "Прочие исключения"
+
+
+@pytest.mark.parametrize(
+    "description",
+    [None, ""],
+)
+def test_get_exception_detail_empty_description(description):
+    assert get_exception_detail(description) == ""
+
+
+@pytest.mark.parametrize(
+    "description",
+    [None, ""],
+)
+def test_extract_guid_empty_description(description):
+    assert extract_guid(description) is None
+
+
+@pytest.mark.parametrize(
+    "description",
+    [None, ""],
+)
+def test_extract_exception_resource_empty_description(description):
     assert extract_exception_resource(description) is None

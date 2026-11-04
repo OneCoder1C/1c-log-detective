@@ -1,9 +1,11 @@
 from collections.abc import Iterable
 
 from techlog import TechLogEvent, extract_fields
-from exception_groups import normalize_exception
-
-from incident_correlation import build_incident_chain, analyze_incident_evidence
+from incident_correlation import (
+    analyze_incident_evidence,
+    build_incident_chain,
+    extract_event_details,
+)
 
 
 def build_incident_timeline(
@@ -62,7 +64,7 @@ def build_incident_timeline(
         }
 
         if event.event_type == "EXCP":
-            item["exception_category"] = normalize_exception(event.description)
+            item.update(extract_event_details(event))
 
         timeline.append(item)
 
@@ -76,7 +78,7 @@ def build_incident_timeline(
     }
 
     if target.event_type == "EXCP":
-        target_info["exception_category"] = normalize_exception(target.description)
+        target_info.update(extract_event_details(target))
 
     return {
         "error": None,
@@ -104,6 +106,15 @@ def format_incident_timeline(incident: dict) -> str:
         "ХРОНОЛОГИЯ",
         "-" * 60,
     ]
+
+    for label, key in (
+        ("Деталь исключения", "exception_detail"),
+        ("GUID", "exception_guid"),
+        ("Ресурс", "exception_resource"),
+    ):
+        value = target.get(key)
+        if value:
+            lines.append(f"{label}: {value}")
 
     for event in incident["timeline"]:
         marker = " >>> ОШИБКА" if event["is_target_error"] else ""
@@ -257,10 +268,25 @@ def format_correlated_incident(incident: dict) -> str:
         f"Поток: {chain['thread'] or 'Не определён'}",
         f"Контекст: {chain['context'] or 'Не определён'}",
         f"Описание: {target['description']}",
-        "",
-        "ОСНОВНЫЕ ДИАГНОСТИЧЕСКИЕ ПРИЗНАКИ",
-        "-" * 60,
     ]
+
+    for label, key in (
+        ("Категория исключения", "exception_category"),
+        ("Деталь исключения", "exception_detail"),
+        ("GUID", "exception_guid"),
+        ("Ресурс", "exception_resource"),
+    ):
+        value = target.get(key)
+        if value:
+            lines.append(f"{label}: {value}")
+
+    lines.extend(
+        [
+            "",
+            "ОСНОВНЫЕ ДИАГНОСТИЧЕСКИЕ ПРИЗНАКИ",
+            "-" * 60,
+        ]
+    )
 
     for finding in evidence["findings"]:
         lines.append(

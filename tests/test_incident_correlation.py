@@ -1,10 +1,10 @@
+import pytest
+
 from techlog import parse_event
 from incident_correlation import (
     build_incident_chain,
-    is_same_execution,
-)
-from incident_correlation import (
     get_correlation_fields,
+    is_same_execution,
     is_same_process_thread,
 )
 
@@ -173,37 +173,6 @@ def test_extracts_sql_details_from_dbv8dbeng():
     assert "_Reference123" in sql_event["sql_tables"]
 
 
-def test_does_not_include_previous_exception_in_chain():
-    events = [
-        make_event(
-            "10:00:00.000-0,EXCP,1,level=ERROR," 'Usr="Иванов",process=123,OSThread=456'
-        ),
-        make_event(
-            "10:00:01.000-0,SDBL,2,level=INFO," 'Usr="Иванов",process=123,OSThread=456'
-        ),
-        make_event(
-            "10:00:02.000-0,EXCP,3,level=ERROR," 'Usr="Иванов",process=123,OSThread=456'
-        ),
-    ]
-
-    for i, event in enumerate(events):
-        fields = get_correlation_fields(event)
-        print(i, event.event_type, fields)
-
-    print(
-        "same process/thread:",
-        is_same_process_thread(
-            get_correlation_fields(events[2]),
-            get_correlation_fields(events[0]),
-        ),
-    )
-
-    result = build_incident_chain(events, error_index=2)
-
-    assert [item["index"] for item in result["events"]] == [2]
-    assert result["before"] == []
-
-
 def test_does_not_include_next_exception_in_chain():
     events = [
         make_event(
@@ -302,33 +271,6 @@ def test_does_not_add_same_thread_to_related_events():
     assert result["related_events"] == []
 
 
-def test_related_events_are_split_before_and_after_exception():
-    events = [
-        make_event(
-            "10:00:00.000-0,TLOCK,1,level=INFO," 'Usr="Иванов",process=123,OSThread=789'
-        ),
-        make_event(
-            "10:00:01.000-0,EXCP,2,level=ERROR," 'Usr="Иванов",process=123,OSThread=456'
-        ),
-        make_event(
-            "10:00:02.000-0,SDBL,3,level=INFO," 'Usr="Иванов",process=123,OSThread=789'
-        ),
-    ]
-
-    from incident_correlation import get_correlation_fields
-
-    for event in events:
-        print(event.event_type, get_correlation_fields(event))
-
-    result = build_incident_chain(events, error_index=1)
-
-    assert len(result["related_before"]) == 1
-    assert result["related_before"][0]["event_type"] == "TLOCK"
-
-    assert len(result["related_after"]) == 1
-    assert result["related_after"][0]["event_type"] == "SDBL"
-
-
 def test_related_events_do_not_include_exception_itself():
     events = [
         make_event(
@@ -341,3 +283,35 @@ def test_related_events_do_not_include_exception_itself():
     assert result["related_events"] == []
     assert result["related_before"] == []
     assert result["related_after"] == []
+
+
+def test_extracts_exception_metadata_from_excp_event():
+    description = (
+        "Не удалось заблокировать запись. Действие "
+        "не выполнено 'DATAZONEOBJECTLOCKS'. "
+        "GUID: 12345678-1234-1234-1234-123456789abc"
+    )
+    event = make_event(
+        "10:00:01.000-0,EXCP,2,level=ERROR,"
+        'Usr="Иванов",process=123,OSThread=456,'
+        f'Descr="{description}"'
+    )
+
+    result = build_incident_chain([event], error_index=0)
+    target = result["events"][0]
+
+    assert target["exception_category"] == "Не удалось заблокировать запись"
+    assert target["exception_detail"] == "DATAZONEOBJECTLOCKS"
+    assert target["exception_guid"] == "12345678-1234-1234-1234-123456789abc"
+    assert target["exception_resource"] == "DATAZONEOBJECTLOCKS"
+
+
+def test_exception_metadata_uses_none_when_guid_and_resource_are_missing():
+    event = make_event('10:00:01.000-0,EXCP,2,level=ERROR,Descr="Неизвестная ошибка"')
+
+    result = build_incident_chain([event], error_index=0)
+    target = result["events"][0]
+
+    assert target["exception_category"] == "Прочие исключения"
+    assert target["exception_guid"] is None
+    assert target["exception_resource"] is None

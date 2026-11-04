@@ -180,3 +180,33 @@ def test_format_correlated_incident_finds_target_exception_by_original_index():
     assert "Время ошибки: 10:00.100" in report
     assert "Ошибка блокировки" in report
     assert "Тип события: SDBL" not in report
+
+
+def test_correlated_report_shows_extracted_exception_metadata():
+    description = (
+        "Не удалось заблокировать запись. Действие "
+        "не выполнено 'DATAZONEOBJECTLOCKS'. "
+        "GUID: 12345678-1234-1234-1234-123456789abc"
+    )
+    raw_text = (
+        '10:00:01.000-0,EXCP,2,level=ERROR,process=123,OSThread=456,'
+        f'Descr="{description}"'
+    )
+    from techlog import parse_event
+    from incident_analysis import analyze_incident_file_correlated
+
+    # Формируем тот же объект инцидента, который использует публичный анализатор.
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as directory:
+        log_file = Path(directory) / "excp.log"
+        log_file.write_text(raw_text + "\n", encoding="utf-8")
+        incident = analyze_incident_file_correlated(log_file)
+
+    report = format_correlated_incident(incident)
+
+    assert "Категория исключения: Не удалось заблокировать запись" in report
+    assert "Деталь исключения: DATAZONEOBJECTLOCKS" in report
+    assert "GUID: 12345678-1234-1234-1234-123456789abc" in report
+    assert "Ресурс: DATAZONEOBJECTLOCKS" in report

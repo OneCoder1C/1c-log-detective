@@ -1,7 +1,18 @@
 from techlog import extract_fields, parse_lock_event
+from exception_groups import (
+    extract_exception_resource,
+    extract_guid,
+    get_exception_detail,
+    normalize_exception,
+)
 from sql_analysis import extract_sql, extract_sql_tables, extract_rows, get_sql_type
 
 SUPPORTED_EVENT_TYPES = {"EXCP", "TLOCK", "SDBL", "DBV8DBEng"}
+
+
+def _safe_text(value) -> str:
+    """Возвращает строковое значение или пустую строку."""
+    return value.strip() if isinstance(value, str) else ""
 
 
 def get_correlation_fields(event) -> dict:
@@ -10,10 +21,10 @@ def get_correlation_fields(event) -> dict:
     fields = extract_fields(event.raw_text)
 
     return {
-        "user": fields.get("Usr", "").strip(),
-        "process": fields.get("process", "").strip(),
-        "thread": fields.get("OSThread", "").strip(),
-        "context": fields.get("Context", "").strip(),
+        "user": _safe_text(fields.get("Usr")),
+        "process": _safe_text(fields.get("process")),
+        "thread": _safe_text(fields.get("OSThread")),
+        "context": _safe_text(fields.get("Context")),
     }
 
 
@@ -53,9 +64,11 @@ def build_incident_chain(
     if not 0 <= error_index < len(events):
         raise IndexError("Индекс события находится за пределами списка.")
 
+    if not isinstance(window, int) or isinstance(window, bool):
+        raise TypeError("Размер окна должен быть целым числом.")
+
     if window < 0:
         raise ValueError("Размер окна не может быть отрицательным.")
-
     error_event = events[error_index]
 
     if error_event.event_type != "EXCP":
@@ -109,8 +122,9 @@ def build_incident_chain(
         event = events[index]
         fields = get_correlation_fields(event)
 
-        user_relation = "same" if anchor["user"] and fields["user"] else "unknown"
-
+        user_relation = (
+            "same" if anchor["user"] and anchor["user"] == fields["user"] else "unknown"
+        )
         item = {
             "index": index,
             "timestamp": event.timestamp,
@@ -196,7 +210,14 @@ def extract_event_details(event) -> dict:
 
     details = {}
 
-    if event.event_type == "TLOCK":
+    if event.event_type == "EXCP":
+        description = event.description or ""
+        details["exception_category"] = normalize_exception(description)
+        details["exception_detail"] = get_exception_detail(description)
+        details["exception_guid"] = extract_guid(description)
+        details["exception_resource"] = extract_exception_resource(description)
+
+    elif event.event_type == "TLOCK":
         lock = parse_lock_event(event.raw_text, event)
 
         if lock is not None:
