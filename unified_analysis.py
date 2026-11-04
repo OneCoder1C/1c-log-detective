@@ -5,7 +5,7 @@ import psutil
 from streaming_performance import StreamingPerformanceAnalyzer
 from collections import Counter
 
-from techlog import iter_techlog_events, parse_event
+from techlog import iter_techlog_events, parse_event, extract_fields
 
 
 def analyze_techlog_file(file_path: str) -> dict:
@@ -13,6 +13,8 @@ def analyze_techlog_file(file_path: str) -> dict:
 
     by_type = Counter()
     by_level = Counter()
+    by_user = Counter()
+    user_event_types = Counter()
 
     total_events = 0
     lock_events_count = 0
@@ -38,6 +40,13 @@ def analyze_techlog_file(file_path: str) -> dict:
                     continue
 
                 performance_analyzer.add_event(event)
+
+                if event.event_type in {"EXCP", "TLOCK", "SDBL"}:
+                    event_user = extract_fields(event.raw_text).get("Usr", "").strip()
+
+                    if event_user:
+                        by_user[event_user] += 1
+                        user_event_types[(event_user, event.event_type)] += 1
 
                 total_events += 1
                 by_type[event.event_type] += 1
@@ -75,6 +84,15 @@ def analyze_techlog_file(file_path: str) -> dict:
             "sql_performance": sql_performance,
             "slow_sql": slow_sql,
             "sql_tables": sql_tables,
+            "by_user": dict(by_user),
+            "user_event_types": {
+                user: {
+                    event_type: count
+                    for (event_user, event_type), count in user_event_types.items()
+                    if event_user == user
+                }
+                for user in by_user
+            },
         }
 
     finally:
