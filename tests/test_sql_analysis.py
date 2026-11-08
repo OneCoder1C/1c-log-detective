@@ -2,6 +2,7 @@ from sql_analysis import (
     count_sql_commands,
     count_sql_commands_by_source,
     extract_rows,
+    extract_rows_affected,
     extract_sql,
     extract_sql_tables,
     get_sql_type,
@@ -317,3 +318,15 @@ def test_normalize_sql_matches_reference():
 
     for sql in samples:
         assert normalize_sql(sql) == normalize_sql_reference(sql)
+
+
+def test_extract_rows_affected_returns_number():
+    assert extract_rows_affected("Sql=UPDATE T SET A=1,RowsAffected=5") == 5
+
+
+def test_extract_rows_affected_returns_zero():
+    assert extract_rows_affected("Sql=UPDATE T SET A=1,RowsAffected=0") == 0
+
+
+def test_extract_rows_affected_returns_none_when_missing():
+    assert extract_rows_affected("Sql=SELECT 1,Rows=5") is None

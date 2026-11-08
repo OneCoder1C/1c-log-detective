@@ -1,5 +1,7 @@
 import sys
 
+from techlog_discovery import discover_techlog_process_dirs
+
 from user_analysis import analyze_user_events, format_user_analysis
 
 from incident_analysis import (
@@ -58,11 +60,48 @@ def analyze_user(log_file, user, report_file):
         sys.exit(1)
 
 
+def select_techlog_directory():
+    """Показывает найденные процессы 1С и возвращает выбранный каталог."""
+    process_dirs = discover_techlog_process_dirs()
+
+    if not process_dirs:
+        print("Каталоги технологического журнала 1С не найдены.")
+        print("Проверь настройки logcfg.xml и наличие файлов .log.")
+        return None
+
+    print("\nНайдены каталоги технологического журнала:")
+
+    for index, process_dir in enumerate(process_dirs, start=1):
+        log_files = list(process_dir.glob("*.log"))
+        print(f"{index}. {process_dir.name} " f"({len(log_files)} файлов)")
+
+    try:
+        choice = int(input("\nВыбери номер процесса: "))
+    except (ValueError, EOFError):
+        print("Некорректный выбор.")
+        return None
+
+    if choice < 1 or choice > len(process_dirs):
+        print("Процесс с таким номером не найден.")
+        return None
+
+    return process_dirs[choice - 1]
+
+
 def main():
     print("1C Log Detective")
     print("=" * 40)
 
-    log_file = sys.argv[1] if len(sys.argv) > 1 else "sample_log.txt"
+    if len(sys.argv) == 1:
+        log_file = select_techlog_directory()
+
+        if log_file is None:
+            sys.exit(1)
+
+        analyze_techlog(log_file, "techlog_report.txt")
+        return
+
+    log_file = sys.argv[1]
 
     if len(sys.argv) > 2 and sys.argv[2].upper() == "USER":
         if len(sys.argv) < 4:

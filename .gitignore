@@ -75,3 +75,25 @@ test_logs/*report*.txt
 test_logs/demo_run.txt
 user_history.txt
 user_report.txt
+
+# Local investigation data
+log_fragments/
+nearby_events*.txt
+performance_search.txt
+project_files*.txt
+project_root.txt
+python_files.txt
+real_techlog_report.txt
+reference422_group2_details.txt
+sql_analysis_result*.txt
+sql_analysis_summary.txt
+techlog_report.txt
+inspect_*.txt
+locks_output.txt
+
+# HTML generator backups
+html_report/generator.before_*.py
+html_report/generator.py.bak
+
+# Generated test report snapshots
+tests/test_report*.txt

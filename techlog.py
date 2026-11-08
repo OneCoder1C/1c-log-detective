@@ -353,6 +353,15 @@ def read_techlog_file(file_path: str | Path) -> list[TechLogEvent]:
     return events
 
 
+def iter_techlog_file_lines(file_paths):
+    """Последовательно читает строки нескольких файлов техжурнала."""
+    for file_path in file_paths:
+        path = Path(file_path)
+
+        with path.open("r", encoding="utf-8", errors="replace") as file:
+            yield from file
+
+
 from pathlib import Path
 
 

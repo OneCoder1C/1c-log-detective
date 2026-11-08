@@ -56,6 +56,7 @@ def build_incident_timeline(
             "event_type": event.event_type,
             "level": event.level,
             "description": event.description,
+            "raw_text": event.raw_text,
             "process": fields.get("process", ""),
             "thread": fields.get("OSThread", ""),
             "user": fields.get("Usr", ""),
@@ -75,6 +76,7 @@ def build_incident_timeline(
         "timestamp": target.timestamp,
         "event_type": target.event_type,
         "description": target.description,
+        "raw_text": target.raw_text,
     }
 
     if target.event_type == "EXCP":
@@ -190,56 +192,118 @@ def analyze_incident_file(log_file, window=20):
 
 
 def analyze_incident_file_correlated(log_file, window=20):
-    """Потоково находит последнее EXCP и строит коррелированную цепочку."""
+    """Потоково находит EXCP и строит отдельную цепочку для каждого инцидента."""
 
     from collections import deque
+    from pathlib import Path
 
-    from techlog import iter_techlog_events, parse_event
+    from techlog import (
+        iter_techlog_events,
+        iter_techlog_file_lines,
+        parse_event,
+    )
+
+    log_path = Path(log_file)
+
+    if log_path.is_file():
+        log_files = [log_path]
+    elif log_path.is_dir():
+        log_files = sorted(
+            log_path.rglob("*.log"),
+            key=lambda path: path.name,
+        )
+
+        if not log_files:
+            raise FileNotFoundError(f"В папке не найдены файлы .log: {log_path}")
+    else:
+        raise FileNotFoundError(f"Путь не найден: {log_path}")
 
     recent_events = deque(maxlen=window)
-    last_incident = None
+    incidents = []
+    current_incident = None
     events_after_error = 0
+    global_index = 0
+    session_events = []
 
-    with open(log_file, "r", encoding="utf-8", errors="replace") as file:
-        for raw_event in iter_techlog_events(file):
-            event = parse_event(raw_event)
+    for raw_event in iter_techlog_events(iter_techlog_file_lines(log_files)):
+        event = parse_event(raw_event)
 
-            if event is None:
-                continue
+        if event is None:
+            continue
 
-            if last_incident is not None and events_after_error < window:
-                last_incident["events"].append(event)
-                events_after_error += 1
+        current_index = global_index
+        global_index += 1
 
-            if event.event_type == "EXCP":
-                incident_events = list(recent_events) + [event]
+        if event.event_type == "SESN":
+            session_events.append((event, current_index))
 
-                last_incident = {
-                    "events": incident_events,
-                    "error_index": len(incident_events) - 1,
-                }
+        if current_incident is not None and events_after_error < window:
+            current_incident["events"].append(event)
+            current_incident["indices"].append(current_index)
+            events_after_error += 1
 
-                events_after_error = 0
+        if event.event_type == "EXCP":
+            if current_incident is not None:
+                incidents.append(current_incident)
 
-            recent_events.append(event)
+            previous = list(recent_events)
 
-    if last_incident is None:
+            current_incident = {
+                "events": [item[0] for item in previous] + [event],
+                "indices": [item[1] for item in previous] + [current_index],
+                "error_index": len(previous),
+            }
+
+            events_after_error = 0
+
+        recent_events.append((event, current_index))
+
+    if current_incident is not None:
+        incidents.append(current_incident)
+
+    if not incidents:
         return {
             "error": "В журнале не найдено исключений EXCP.",
             "chain": None,
             "evidence": None,
+            "incidents": [],
         }
 
-    chain = build_incident_chain(
-        last_incident["events"],
-        error_index=last_incident["error_index"],
-        window=window,
-    )
+    analyzed_incidents = []
+
+    for item in incidents:
+        chain = build_incident_chain(
+            item["events"],
+            error_index=item["error_index"],
+            window=window,
+            session_events=session_events,
+            error_global_index=item["indices"][item["error_index"]],
+        )
+
+        # Преобразуем локальные индексы в глобальные.
+        index_map = dict(enumerate(item["indices"]))
+
+        for event in chain["events"] + chain["related_events"]:
+            event["index"] = index_map[event["index"]]
+
+        chain["error_index"] = index_map[chain["error_index"]]
+
+        evidence = analyze_incident_evidence(chain)
+
+        analyzed_incidents.append(
+            {
+                "chain": chain,
+                "evidence": evidence,
+            }
+        )
+
+    last = analyzed_incidents[-1]
 
     return {
         "error": None,
-        "chain": chain,
-        "evidence": analyze_incident_evidence(chain),
+        "chain": last["chain"],
+        "evidence": last["evidence"],
+        "incidents": analyzed_incidents,
     }
 
 

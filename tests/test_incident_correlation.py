@@ -3,6 +3,7 @@ import pytest
 from techlog import parse_event
 from incident_correlation import (
     build_incident_chain,
+    find_sql_event_pairs,
     get_correlation_fields,
     is_same_execution,
     is_same_process_thread,
@@ -285,6 +286,26 @@ def test_related_events_do_not_include_exception_itself():
     assert result["related_after"] == []
 
 
+def test_related_events_include_correlation_explanation():
+    events = [
+        make_event(
+            "10:00:00.000-0,TLOCK,1,level=INFO," 'Usr="Иванов",process=123,OSThread=789'
+        ),
+        make_event(
+            "10:00:01.000-0,EXCP,2,level=ERROR," 'Usr="Иванов",process=123,OSThread=456'
+        ),
+    ]
+
+    result = build_incident_chain(events, error_index=1)
+
+    related = result["related_events"][0]
+
+    assert related["correlation_strength"] == "weak"
+    assert related["correlation_reason"] == (
+        "Совпадают пользователь и процесс; " "событие зарегистрировано в другом потоке."
+    )
+
+
 def test_extracts_exception_metadata_from_excp_event():
     description = (
         "Не удалось заблокировать запись. Действие "
@@ -315,3 +336,214 @@ def test_exception_metadata_uses_none_when_guid_and_resource_are_missing():
     assert target["exception_category"] == "Прочие исключения"
     assert target["exception_guid"] is None
     assert target["exception_resource"] is None
+
+
+def test_correlates_exception_with_background_session():
+    session_id = "9db3a907-2d96-4a79-8971-a5813cbd3309"
+
+    events = [
+        make_event(
+            "10:00:00.000-0,SESN,1,level=INFO,"
+            "process=123,OSThread=456,"
+            f"Func=Start,Appl=BackgroundJob,Nmb=248,ID={session_id}"
+        ),
+        make_event(
+            "10:00:01.000-0,EXCP,2,level=ERROR,"
+            "process=123,OSThread=456,Usr=DefUser,"
+            'Descr="Ошибка базы данных"'
+        ),
+        make_event(
+            "10:00:02.000-0,SESN,3,level=INFO,"
+            "process=123,OSThread=456,"
+            f"Func=Finish,Appl=BackgroundJob,Nmb=248,ID={session_id}"
+        ),
+    ]
+
+    result = build_incident_chain(events, error_index=1)
+
+    session = result["background_session"]
+
+    assert session["id"] == session_id
+    assert session["nmb"] == "248"
+    assert session["appl"] == "BackgroundJob"
+    assert session["start_index"] == 0
+    assert session["finish_index"] == 2
+
+
+def test_does_not_correlate_exception_with_unfinished_session():
+    events = [
+        make_event(
+            "10:00:00.000-0,SESN,1,level=INFO,"
+            "process=123,OSThread=456,"
+            "Func=Start,Appl=BackgroundJob,Nmb=248,ID=guid-start"
+        ),
+        make_event(
+            "10:00:01.000-0,EXCP,2,level=ERROR,"
+            "process=123,OSThread=456,Usr=DefUser,"
+            'Descr="Ошибка базы данных"'
+        ),
+        make_event(
+            "10:00:02.000-0,SESN,3,level=INFO,"
+            "process=123,OSThread=456,"
+            "Func=Finish,Appl=BackgroundJob,Nmb=248,ID=guid-other"
+        ),
+    ]
+
+    result = build_incident_chain(events, error_index=1)
+
+    assert result["background_session"] is None
+
+
+def test_timestamp_to_microseconds():
+    from incident_correlation import _timestamp_to_microseconds
+
+    assert _timestamp_to_microseconds("11:11.615047-1") == (
+        (11 * 3600 + 11 * 60) * 1_000_000 + 615047
+    )
+
+
+def test_timestamp_to_microseconds_rejects_invalid_value():
+    from incident_correlation import _timestamp_to_microseconds
+
+    assert _timestamp_to_microseconds("invalid") is None
+
+
+def test_normalize_table_name():
+    from incident_correlation import _normalize_table_name
+
+    assert _normalize_table_name("_Const84490") == "const84490"
+    assert _normalize_table_name("Const84490") == "const84490"
+
+
+def test_finds_matching_dbv8dbeng_and_sdbl_events():
+    events = [
+        make_event(
+            "11:11.615047-1,DBV8DBEng,1,"
+            "level=DEBUG,process=1cv8c,OSThread=23240,"
+            "Usr=Иван,Sql=SELECT * FROM _Const84490"
+        ),
+        make_event(
+            "11:11.615048-1,SDBL,1,"
+            "level=DEBUG,process=1cv8c,OSThread=23240,"
+            "Usr=Иван,Sdbl=SELECT * FROM Const84490"
+        ),
+    ]
+
+    pairs = find_sql_event_pairs(events)
+
+    assert len(pairs) == 1
+    assert pairs[0]["db_index"] == 0
+    assert pairs[0]["sdbl_index"] == 1
+    assert pairs[0]["interval_us"] == 1
+    assert pairs[0]["correlation_strength"] == "weak"
+
+
+def test_matches_dbv8dbeng_and_sdbl_with_different_field_names():
+    events = [
+        make_event(
+            "11:11.615047-1,DBV8DBEng,1,"
+            "level=DEBUG,process=1cv8c,OSThread=23240,"
+            "Usr=Иван,Sql=SELECT T1._Fld84491 FROM _Const84490 T1"
+        ),
+        make_event(
+            "11:11.615048-1,SDBL,1,"
+            "level=DEBUG,process=1cv8c,OSThread=23240,"
+            "Usr=Иван,Sdbl=SELECT Fld84491 FROM Const84490"
+        ),
+    ]
+
+    pairs = find_sql_event_pairs(events)
+
+    assert len(pairs) == 1
+    assert pairs[0]["db_index"] == 0
+    assert pairs[0]["sdbl_index"] == 1
+    assert pairs[0]["correlation_strength"] == "weak"
+
+
+def test_does_not_confirm_different_queries_as_exact_pairs():
+    events = [
+        make_event(
+            "11:11.615047-1,DBV8DBEng,1,"
+            "level=DEBUG,process=1cv8c,OSThread=23240,"
+            "Usr=Иван,Sql=SELECT Name FROM _Const84490 WHERE Active = 1"
+        ),
+        make_event(
+            "11:11.615048-1,SDBL,1,"
+            "level=DEBUG,process=1cv8c,OSThread=23240,"
+            "Usr=Иван,Sdbl=SELECT Code FROM Const84490 WHERE Deleted = 0"
+        ),
+    ]
+
+    pairs = find_sql_event_pairs(events)
+
+    assert all(pair["correlation_strength"] != "strong" for pair in pairs)
+
+
+def test_includes_ttimeout_in_incident_chain():
+    events = [
+        make_event(
+            "10:00:00.000-0,TTIMEOUT,1,level=WARNING,"
+            'Usr="Иванов",process=123,OSThread=456'
+        ),
+        make_event(
+            "10:00:01.000-0,EXCP,2,level=ERROR," 'Usr="Иванов",process=123,OSThread=456'
+        ),
+    ]
+
+    result = build_incident_chain(events, error_index=1)
+
+    assert len(result["before"]) == 1
+    assert result["before"][0]["event_type"] == "TTIMEOUT"
+    assert result["events"][0]["event_type"] == "TTIMEOUT"
+
+
+def test_links_xlocktables_operation_to_matching_tlock_resource():
+    events = [
+        make_event(
+            "10:00:00.000-0,DBV8DBEng,1,level=INFO,"
+            'Usr="Иванов",process=123,OSThread=456,'
+            "Func=xlockTables(_InfoRg97191)"
+        ),
+        make_event(
+            "10:00:00.001-0,TLOCK,2,level=INFO,"
+            'Usr="Иванов",process=123,OSThread=456,'
+            'Regions="InfoRg97191.DIMS",'
+            'Locks="InfoRg97191.DIMS Exclusive Fld31136=0"'
+        ),
+        make_event(
+            "10:00:01.000-0,EXCP,3,level=ERROR," 'Usr="Иванов",process=123,OSThread=456'
+        ),
+    ]
+
+    result = build_incident_chain(events, error_index=2)
+
+    links = result["diagnostic_links"]
+
+    assert len(links) == 1
+    assert links[0]["from_index"] == 0
+    assert links[0]["to_index"] == 1
+    assert links[0]["resource"] == "inforg97191"
+    assert links[0]["causal"] is False
+
+
+def test_does_not_link_xlocktables_to_different_tlock_resource():
+    events = [
+        make_event(
+            "10:00:00.000-0,DBV8DBEng,1,level=INFO,"
+            'Usr="Иванов",process=123,OSThread=456,'
+            "Func=xlockTables(_InfoRg97191)"
+        ),
+        make_event(
+            "10:00:00.001-0,TLOCK,2,level=INFO,"
+            'Usr="Иванов",process=123,OSThread=456,'
+            'Regions="InfoRg97192.DIMS",'
+            'Locks="InfoRg97192.DIMS Exclusive Fld31136=0"'
+        ),
+        make_event(
+            "10:00:01.000-0,EXCP,3,level=ERROR," 'Usr="Иванов",process=123,OSThread=456'
+        ),
+    ]
+
+    result = build_incident_chain(events, error_index=2)
+
+    assert result["diagnostic_links"] == []

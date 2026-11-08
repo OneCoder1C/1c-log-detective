@@ -16,10 +16,11 @@ def make_event(event_type, index):
     }
 
 
-def make_chain(before, after):
+def make_chain(before, after, events=None):
     return {
         "before": before,
         "after": after,
+        "events": events or [],
     }
 
 
@@ -106,3 +107,78 @@ def test_detects_dbv8dbeng_events_before_exception():
 
     assert result["has_dbv8dbeng_events_before"] is True
     assert result["findings"][0]["code"] == "DBV8DBENG_BEFORE_EXCP"
+
+
+def test_detects_datazoneobjectlocks_lock_failure():
+    before = [
+        {**make_event("DBV8DBEng", 1), "sql": "SELECT * FROM _ExtensionsInfoNGS"},
+        {
+            **make_event("DBV8DBEng", 2),
+            "sql": "SELECT Status FROM SchemaStorage WHERE SchemaID = 1",
+        },
+        {**make_event("SDBL", 3), "sql": "GET NGENERATIONS"},
+        {**make_event("SDBL", 4), "sql": "schema get local"},
+    ]
+
+    error = {
+        **make_event("EXCP", 5),
+        "is_error": True,
+        "exception_resource": "DATAZONEOBJECTLOCKS",
+    }
+
+    result = analyze_incident_evidence(make_chain(before, [], events=[error]))
+
+    finding = next(
+        item
+        for item in result["findings"]
+        if item["code"] == "DATAZONEOBJECTLOCKS_LOCK_FAILURE"
+    )
+
+    assert finding["confidence"] == "Наблюдаемая закономерность"
+    assert finding["count"] == 5
+
+    assert "локальной схемы" in result["probable_cause"]
+    assert result["confidence"] == "Низкая"
+
+
+def test_does_not_detect_datazoneobjectlocks_without_full_sequence():
+    before = [
+        {**make_event("DBV8DBEng", 1), "sql": "SELECT * FROM _ExtensionsInfo"},
+        {**make_event("SDBL", 2), "sql": "GET NGENERATIONS"},
+    ]
+
+    error = {
+        **make_event("EXCP", 3),
+        "is_error": True,
+        "exception_resource": "DATAZONEOBJECTLOCKS",
+    }
+
+    result = analyze_incident_evidence(make_chain(before, [], events=[error]))
+
+    codes = {item["code"] for item in result["findings"]}
+
+    assert "DATAZONEOBJECTLOCKS_LOCK_FAILURE" not in codes
+
+    assert result["probable_cause"] == ("Причина не установлена по имеющимся событиям.")
+    assert result["confidence"] == "Недостаточно данных"
+
+
+def test_does_not_detect_datazoneobjectlocks_for_other_exception():
+    before = [
+        {**make_event("DBV8DBEng", 1), "sql": "SELECT * FROM _ExtensionsInfo"},
+        {**make_event("DBV8DBEng", 2), "sql": "SELECT Status FROM SchemaStorage"},
+        {**make_event("SDBL", 3), "sql": "GET NGENERATIONS"},
+        {**make_event("SDBL", 4), "sql": "schema get local"},
+    ]
+
+    error = {
+        **make_event("EXCP", 5),
+        "is_error": True,
+        "exception_resource": "OTHER_RESOURCE",
+    }
+
+    result = analyze_incident_evidence(make_chain(before, [], events=[error]))
+
+    codes = {item["code"] for item in result["findings"]}
+
+    assert "DATAZONEOBJECTLOCKS_LOCK_FAILURE" not in codes

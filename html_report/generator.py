@@ -230,6 +230,20 @@ h3 { margin: 0; font-size: 16px; font-weight: 650; }
 
 .error-event .event-type { color: var(--danger); }
 
+.timeout-event {
+    border-color: rgba(230, 154, 69, .45);
+    background: linear-gradient(
+        110deg,
+        rgba(230, 154, 69, .10),
+        var(--panel)
+    );
+    box-shadow: inset 3px 0 0 #e69a45, var(--shadow);
+}
+
+.timeout-event .event-type {
+    color: #e69a45;
+}
+
 details { margin-top: 12px; }
 
 summary { cursor: pointer; color: var(--accent); }
@@ -794,30 +808,344 @@ footer {
         grid-template-columns: 1fr;
     }
 }
+
+/* ===== Переключение светлой и тёмной темы ===== */
+
+.theme-toggle {
+    margin-top: 16px;
+    padding: 9px 15px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--panel2);
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .2s, border-color .2s;
+}
+
+.theme-toggle:hover {
+    border-color: var(--accent);
+    background: var(--panel3);
+}
+
+html[data-theme="light"] {
+    color-scheme: light;
+    --bg: #f1f5f9;
+    --panel: #ffffff;
+    --panel2: #f8fafc;
+    --panel3: #eaf0f7;
+    --text: #172033;
+    --muted: #64748b;
+    --accent: #1769aa;
+    --accent-soft: rgba(23, 105, 170, .10);
+    --danger: #dc3545;
+    --danger-soft: rgba(220, 53, 69, .09);
+    --warning: #a96808;
+    --success: #168452;
+    --border: #d5deea;
+    --shadow: 0 8px 24px rgba(30, 50, 75, .08);
+}
+
+html[data-theme="light"] body {
+    color: var(--text);
+    background:
+        radial-gradient(ellipse at 15% 0%, rgba(45, 100, 160, .07), transparent 38%),
+        radial-gradient(ellipse at 90% 10%, rgba(90, 60, 140, .04), transparent 35%),
+        var(--bg);
+}
+
+html[data-theme="light"] h1 {
+    background: linear-gradient(100deg, #172033, #1769aa);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+html[data-theme="light"] .metric {
+    background: linear-gradient(145deg, #ffffff, #edf3f9);
+}
+
+html[data-theme="light"] .incident-summary {
+    background: linear-gradient(125deg, #f5eff5, #ffffff 65%);
+}
+
+html[data-theme="light"] .overview-item {
+    background: rgba(30, 50, 75, .035);
+    border-color: rgba(30, 50, 75, .10);
+}
+
+html[data-theme="light"] .overview-cause {
+    background: rgba(220, 53, 69, .055);
+    border-color: rgba(220, 53, 69, .20);
+}
+
+html[data-theme="light"] .event,
+html[data-theme="light"] .finding {
+    background: linear-gradient(110deg, #ffffff, #f1f5f9);
+}
+
+html[data-theme="light"] .error-event {
+    background: linear-gradient(110deg, #fff0f1, #f8fafc);
+}
+
+html[data-theme="light"] .timeline-scale {
+    background: linear-gradient(110deg, #f1f5f9, #ffffff);
+}
+
+html[data-theme="light"] pre {
+    color: #243247;
+    background: #eaf0f6;
+    border-color: #d5deea;
+}
+
+html[data-theme="light"] .incident-hero-card {
+    border-color: #cbd5e1;
+    background: linear-gradient(145deg, #ffffff, #edf2f8);
+    box-shadow: 0 12px 30px rgba(30, 50, 75, .09);
+}
+
+html[data-theme="light"] .incident-hero-cause {
+    background: rgba(226, 232, 240, .75);
+}
+
+html[data-theme="light"] .incident-hero-evidence {
+    color: #64748b;
+}
+
+html[data-theme="light"] .incident-hero-evidence strong {
+    color: #172033;
+}
+
+html[data-theme="light"] .incident-kpi {
+    border-color: #cbd5e1;
+    background: #f8fafc;
+}
+
+html[data-theme="light"] .incident-kpi-label,
+html[data-theme="light"] .incident-kpi-description {
+    color: #64748b;
+}
+
+html[data-theme="light"] .incident-kpi-value {
+    color: #172033;
+}
+
+html[data-theme="light"] table th,
+html[data-theme="light"] table td {
+    border-color: var(--border);
+}
+
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea {
+    color: var(--text);
+    background: var(--panel);
+    border-color: var(--border);
+}
+
+html[data-theme="light"] .theme-toggle {
+    color: var(--text);
+    background: #ffffff;
+    border-color: #cbd5e1;
+}
+
+
+/* ===== Обновлённая верхняя панель ===== */
+
+.app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 24px;
+    padding: 20px 22px;
+    margin-bottom: 26px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: linear-gradient(120deg, var(--panel), var(--panel2));
+    box-shadow: var(--shadow);
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    min-width: 240px;
+}
+
+.brand-mark {
+    display: grid;
+    place-items: center;
+    flex: 0 0 48px;
+    width: 48px;
+    height: 48px;
+    border-radius: 13px;
+    background: linear-gradient(135deg, #2878bd, #55a5e8);
+    color: #ffffff;
+    font-size: 19px;
+    font-weight: 800;
+    letter-spacing: -1px;
+    box-shadow: 0 5px 18px rgba(45, 125, 195, .25);
+}
+
+.brand-text h1 {
+    margin: 0;
+    font-size: 25px;
+}
+
+.brand-text .subtitle {
+    margin-top: 4px;
+    font-size: 12px;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.incident-counter {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 13px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--panel2);
+}
+
+.incident-counter-value {
+    color: var(--accent);
+    font-size: 22px;
+    font-weight: 750;
+    line-height: 1;
+}
+
+.incident-counter-label {
+    color: var(--muted);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.header-selector {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 7px;
+}
+
+.header-selector label {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.header-selector select {
+    max-width: 300px;
+    min-width: 180px;
+}
+
+.app-header .theme-toggle {
+    margin: 0;
+}
+
+.app-header #export-bug-report {
+    white-space: nowrap;
+}
+
+html[data-theme="light"] .app-header {
+    background: linear-gradient(120deg, #ffffff, #f1f6fc);
+    border-color: #d8e1eb;
+}
+
+html[data-theme="light"] .incident-counter {
+    background: #f8fafc;
+    border-color: #d8e1eb;
+}
+
+@media (max-width: 900px) {
+    .app-header {
+        align-items: flex-start;
+    }
+
+    .header-actions {
+        justify-content: flex-start;
+        width: 100%;
+    }
+}
+
+@media (max-width: 560px) {
+    .app-header {
+        padding: 16px;
+    }
+
+    .brand {
+        min-width: 0;
+    }
+
+    .brand-text h1 {
+        font-size: 21px;
+    }
+
+    .header-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .header-actions > *,
+    .header-selector select {
+        width: 100%;
+        max-width: none;
+    }
+
+    .header-selector {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .incident-counter {
+        justify-content: center;
+    }
+}
+
 </style>
 
 </head>
 <body>
 <main>
-<header>
-    <h1>1C Log Detective</h1>
-    <div class="subtitle">Расследование инцидента технологического журнала 1С</div>
-
-</header>
-
-<section id="incident-selector" class="panel" hidden>
-    <h2>Выбор инцидента</h2>
-    <div class="controls">
-        <select id="incident-select" aria-label="Выберите инцидент"></select>
-        <span id="incident-position" class="muted"></span>
+<header class="app-header">
+    <div class="brand">
+        <div class="brand-mark">1C</div>
+        <div class="brand-text">
+            <h1>1C Log Detective</h1>
+            <div class="subtitle">Расследование технологического журнала 1С</div>
+        </div>
     </div>
-</section>
 
-<section class="panel">
-    <button id="export-bug-report" type="button">
-        Export bug report
-    </button>
-</section>
+    <div class="header-actions">
+        <div class="incident-counter">
+            <span class="incident-counter-value" id="incident-count">0</span>
+            <span class="incident-counter-label">инцидентов найдено</span>
+        </div>
+
+        <div id="incident-selector" class="header-selector" hidden>
+            <label for="incident-select">Инцидент</label>
+            <select id="incident-select" aria-label="Выберите инцидент"></select>
+            <span id="incident-position" class="muted"></span>
+        </div>
+
+        <button type="button" id="theme-toggle" class="theme-toggle">
+            ☀ Светлая тема
+        </button>
+
+        <button id="export-bug-report" type="button">
+            Экспорт отчёта
+        </button>
+    </div>
+</header>
 
 <section id="incident-summary" class="incident-summary"></section>
 <div id="status" class="panel" hidden></div>
@@ -828,28 +1156,37 @@ footer {
 <section id="incident" class="panel"></section>
 
 <h2>Временная шкала</h2>
-<div class="controls">
-    <input id="search" type="search" placeholder="Поиск по событиям...">
-    <select id="event-filter" aria-label="Фильтр по типу события">
-        <option value="ALL">Все типы событий</option>
-        <option value="EXCP">EXCP</option>
-        <option value="SDBL">SDBL</option>
-        <option value="DBV8DBEng">DBV8DBEng</option>
-    </select>
-    <select id="user-filter" aria-label="Фильтр по пользователю">
-        <option value="ALL">Все пользователи</option>
-    </select>
-    <label class="filter-toggle">
-        <input id="only-problems" type="checkbox">
-        Только проблемы
-    </label>
-    <label class="filter-toggle">
-        <input id="include-related-sessions" type="checkbox">
-        Включить связанные сеансы
-    </label>
+<div class="timeline-controls">
+    <div class="filter-row filter-row-types">
+        <div id="event-filter-chips" class="event-filter-chips"></div>
+        <select id="event-filter" aria-label="Фильтр по типу события" hidden>
+            <option value="ALL">Все типы событий</option>
+            <option value="EXCP">EXCP</option>
+            <option value="SDBL">SDBL</option>
+            <option value="DBV8DBEng">DBV8DBEng</option>
+        </select>
+    </div>
+
+    <div class="filter-row filter-row-search">
+        <input id="search" type="search" placeholder="Поиск по событиям...">
+        <select id="user-filter" aria-label="Фильтр по пользователю">
+            <option value="ALL">Все пользователи</option>
+        </select>
+    </div>
+
+    <div class="filter-row filter-row-options">
+        <label class="filter-toggle">
+            <input id="only-problems" type="checkbox">
+            Только проблемы
+        </label>
+        <label class="filter-toggle">
+            <input id="include-related-sessions" type="checkbox">
+            Включить связанные сеансы
+        </label>
+    </div>
 </div>
 
-<h3>Временная шкала</h3>
+
 <div class="timeline-legend">
     <span class="legend-item"><i class="legend-dot" data-type="EXCP"></i> EXCP — ошибка</span>
     <span class="legend-item"><i class="legend-dot" data-type="TTIMEOUT"></i> TTIMEOUT — ожидание</span>
@@ -878,7 +1215,7 @@ footer {
 <h2>Сводка по связанным событиям</h2>
 <div id="related-findings"></div>
 
-<h2>What to check next — Что проверить дальше</h2>
+<h2>Что проверить дальше</h2>
 <ol id="next-checks"></ol>
 
 <footer>Отчёт сформирован 1C Log Detective. Данные встроены в файл; подключение к серверу не требуется.</footer>
@@ -1104,6 +1441,11 @@ function renderIncidentSelector() {
     const section = document.getElementById("incident-selector");
     const select = document.getElementById("incident-select");
     const position = document.getElementById("incident-position");
+    const counter = document.getElementById("incident-count");
+
+    if (counter) {
+        counter.textContent = String(incidents.length);
+    }
 
     if (incidents.length <= 1) {
         section.hidden = true;
@@ -1146,7 +1488,15 @@ function clear(element) {
 }
 
 function renderEvent(event, isError = false) {
-    const card = node("article", isError ? "event error-event" : "event");
+    const eventType = String(event.event_type || "").toUpperCase();
+
+    const cardClass = isError
+        ? "event error-event"
+        : eventType === "TTIMEOUT"
+            ? "event timeout-event"
+            : "event";
+
+    const card = node("article", cardClass);
     const header = node("div", "event-header");
     const typeBadge = node("span", "event-type", event.event_type || "EVENT");
     typeBadge.dataset.type = String(event.event_type || "EVENT").toUpperCase();
@@ -1159,6 +1509,29 @@ function renderEvent(event, isError = false) {
 
     if (event.description) {
         card.append(node("div", "description", event.description));
+    }
+    else if (eventType === "SDBL" || eventType === "DBV8DBENG") {
+        const sqlSummary = [];
+
+        if (event.sql_type) {
+            sqlSummary.push(`Тип SQL: ${event.sql_type}`);
+        }
+
+        if (Array.isArray(event.sql_tables) && event.sql_tables.length) {
+            sqlSummary.push(`Таблицы: ${event.sql_tables.join(", ")}`);
+        }
+
+        if (event.rows !== undefined && event.rows !== null) {
+            sqlSummary.push(`Возвращено строк: ${event.rows}`);
+        }
+
+        if (event.rows_affected !== undefined && event.rows_affected !== null) {
+            sqlSummary.push(`Затронуто строк: ${event.rows_affected}`);
+        }
+
+        if (sqlSummary.length) {
+            card.append(node("div", "description", sqlSummary.join(" · ")));
+        }
     }
 
     const meta = [
@@ -1254,6 +1627,7 @@ function renderEvents(targetId, events) {
 
 function renderEventFilterCounts() {
     const select = document.getElementById("event-filter");
+    const chips = document.getElementById("event-filter-chips");
     const currentData = getCurrentData();
 
     const events = [
@@ -1285,8 +1659,7 @@ function renderEventFilterCounts() {
 
     const allOption = document.createElement("option");
     allOption.value = "ALL";
-    allOption.textContent =
-        `Все типы событий (${uniqueEvents.size})`;
+    allOption.textContent = `Все типы событий (${uniqueEvents.size})`;
     select.append(allOption);
 
     for (const type of types) {
@@ -1297,6 +1670,51 @@ function renderEventFilterCounts() {
     }
 
     select.value = counts.has(selected) ? selected : "ALL";
+
+    // Создаём визуальные кнопки типов событий.
+    if (chips) {
+        chips.replaceChildren();
+
+        const buttons = [
+            {
+                value: "ALL",
+                label: "Все",
+                count: uniqueEvents.size
+            },
+            ...types.map(type => ({
+                value: type,
+                label: type,
+                count: counts.get(type)
+            }))
+        ];
+
+        for (const item of buttons) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "event-filter-chip";
+            button.dataset.value = item.value;
+            button.setAttribute(
+                "aria-pressed",
+                String(select.value === item.value)
+            );
+
+            button.append(
+                document.createTextNode(item.label + " ")
+            );
+
+            const count = document.createElement("span");
+            count.className = "event-filter-chip-count";
+            count.textContent = item.count;
+            button.append(count);
+
+            button.addEventListener("click", () => {
+                select.value = item.value;
+                renderTimeline();
+            });
+
+            chips.append(button);
+        }
+    }
 }
 
 function renderUserFilterOptions(events) {
@@ -1887,9 +2305,7 @@ function renderIncidentSummary() {
 
     const excpCount = eventCounts.EXCP || 0;
     const tlockCount = eventCounts.TLOCK || 0;
-    const sqlCount =
-        (eventCounts.SDBL || 0) +
-        (eventCounts.DBV8DBEng || 0);
+    const timeoutCount = eventCounts.TTIMEOUT || 0;
 
     const layout = node("div", "incident-hero-layout");
 
@@ -1998,8 +2414,8 @@ function renderIncidentSummary() {
     }
 
     addKpi("EXCP", excpCount, "Исключения");
+    addKpi("TTIMEOUT", timeoutCount, "Тайм-ауты ожидания");
     addKpi("TLOCK", tlockCount, "События блокировок");
-    addKpi("SQL", sqlCount, "SDBL + DBV8DBEng");
 
     layout.append(card);
     layout.append(kpis);
@@ -2198,6 +2614,48 @@ document.getElementById("export-bug-report").addEventListener("click", () => {
     link.remove();
 
     URL.revokeObjectURL(url);
+});
+
+
+// ===== Переключение темы отчёта =====
+const themeButton = document.getElementById("theme-toggle");
+
+function applyReportTheme(theme, save = false) {
+    const selectedTheme = theme === "light" ? "light" : "dark";
+
+    document.documentElement.dataset.theme = selectedTheme;
+
+    themeButton.textContent = selectedTheme === "dark"
+        ? "☀ Светлая тема"
+        : "🌙 Тёмная тема";
+
+    themeButton.setAttribute(
+        "aria-pressed",
+        String(selectedTheme === "light")
+    );
+
+    if (save) {
+        try {
+            localStorage.setItem("1c-log-detective-theme", selectedTheme);
+        } catch (error) {
+            // Отчёт продолжает работать, даже если браузер запрещает localStorage.
+        }
+    }
+}
+
+let savedTheme = "dark";
+
+try {
+    savedTheme = localStorage.getItem("1c-log-detective-theme") || "dark";
+} catch (error) {
+    // При недоступном localStorage используем тёмную тему.
+}
+
+applyReportTheme(savedTheme);
+
+themeButton.addEventListener("click", () => {
+    const currentTheme = document.documentElement.dataset.theme;
+    applyReportTheme(currentTheme === "dark" ? "light" : "dark", true);
 });
 
 render();

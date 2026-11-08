@@ -18,6 +18,16 @@ def extract_rows(raw_text: str) -> int | None:
     return int(match.group(1))
 
 
+def extract_rows_affected(raw_text: str) -> int | None:
+    """Извлекает количество затронутых строк из DBV8DBEng."""
+    match = re.search(r"(?:^|,)RowsAffected=(\d+)(?:,|$)", raw_text)
+
+    if match is None:
+        return None
+
+    return int(match.group(1))
+
+
 SQL_FIELD_END_PATTERN = re.compile(r"(?:NParams|Rows|Context)=")
 
 
