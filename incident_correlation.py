@@ -40,7 +40,7 @@ def _timestamp_to_microseconds(timestamp: str) -> int | None:
     """Преобразует время события ТЖ в микросекунды от начала суток."""
 
     match = re.match(
-        r"^(\d{2}):(\d{2})\.(\d{6})-\d+$",
+        r"^(?:\d+:\s*)?(\d{2}):(\d{2})\.(\d{6})-\d+$",
         timestamp,
     )
 
@@ -98,12 +98,45 @@ def _extract_select_fields(sql: str) -> set[str]:
             # Физическое поле IDRRef соответствует логическому ID.
             if field == "idrref":
                 field = "id"
+            # Окончание RRef у физических ссылочных полей отсутствует в SDBL.
+            elif field.endswith("rref"):
+                field = field[:-4]
 
             if field:
                 result.add(field)
 
     return result
 
+
+
+def _extract_select_branches(sql: str) -> tuple:
+    """Возвращает структуру каждой ветви SELECT с её таблицами и полями."""
+
+    branches = re.split(
+        r"\bUNION(?:\s+ALL)?\b",
+        sql,
+        flags=re.IGNORECASE,
+    )
+
+    result = []
+
+    for branch in branches:
+        if not re.search(r"\bSELECT\b", branch, re.IGNORECASE):
+            continue
+
+        tables = tuple(
+            sorted(
+                _normalize_table_name(table)
+                for table in extract_sql_tables(branch)
+            )
+        )
+        fields = tuple(sorted(_extract_select_fields(branch)))
+
+        if tables:
+            result.append((tables, fields))
+
+    # Сортируем ветви, чтобы не зависеть от их порядка в SQL.
+    return tuple(sorted(result))
 
 def find_sql_event_pairs(
     events,
@@ -124,7 +157,7 @@ def find_sql_event_pairs(
 
         sql_type = get_sql_type(sql)
         tables = {_normalize_table_name(table) for table in extract_sql_tables(sql)}
-        select_fields = _extract_select_fields(sql) if sql_type == "SELECT" else set()
+        select_branches = _extract_select_branches(sql) if sql_type == "SELECT" else ()
 
         if sql_type == "OTHER" or not tables:
             continue
@@ -144,7 +177,7 @@ def find_sql_event_pairs(
             "sql_type": sql_type,
             "tables": tables,
             "timestamp_us": timestamp_us,
-            "select_fields": select_fields,
+            "select_branches": select_branches,
         }
 
         if event.event_type == "DBV8DBEng":
@@ -173,10 +206,10 @@ def find_sql_event_pairs(
                 continue
 
             if db_event["sql_type"] == "SELECT":
-                if not db_event["select_fields"] or not sdbl_event["select_fields"]:
+                if not db_event["select_branches"] or not sdbl_event["select_branches"]:
                     continue
 
-                if db_event["select_fields"] != sdbl_event["select_fields"]:
+                if db_event["select_branches"] != sdbl_event["select_branches"]:
                     continue
 
             if db_event["tables"] != sdbl_event["tables"]:

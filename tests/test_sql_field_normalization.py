@@ -39,3 +39,57 @@ def test_union_all_field_query_normalizes_db_and_sdbl_fields():
     """
 
     assert _extract_select_fields(db_sql) == _extract_select_fields(sdbl_sql)
+from incident_correlation import _extract_select_branches
+
+
+def test_select_branches_preserve_table_field_relationship():
+    db_sql = """
+    SELECT T1._Fld57625
+    FROM _Reference422 T1
+    UNION ALL
+    SELECT T2._Fld50204
+    FROM _Reference119 T2
+    """
+
+    sdbl_sql = """
+    SELECT Q1.Fld57625
+    FROM Reference422 Q1
+    UNION ALL
+    SELECT Q2.Fld50204
+    FROM Reference119 Q2
+    """
+
+    assert _extract_select_branches(db_sql) == _extract_select_branches(sdbl_sql)
+
+
+def test_select_branches_detect_fields_assigned_to_different_tables():
+    db_sql = """
+    SELECT T1._Fld57625
+    FROM _Reference422 T1
+    UNION ALL
+    SELECT T2._Fld50204
+    FROM _Reference119 T2
+    """
+
+    different_sql = """
+    SELECT Q1.Fld50204
+    FROM Reference422 Q1
+    UNION ALL
+    SELECT Q2.Fld57625
+    FROM Reference119 Q2
+    """
+
+    assert _extract_select_branches(db_sql) != _extract_select_branches(different_sql)
+
+def test_reference_fields_normalize_rref_suffix():
+    db_sql = """
+    SELECT T1._Fld75598RRef, T1._IDRRef
+    FROM _Reference422 T1
+    """
+
+    sdbl_sql = """
+    SELECT Q1.Fld75598, Q1.ID
+    FROM Reference422 Q1
+    """
+
+    assert _extract_select_fields(db_sql) == _extract_select_fields(sdbl_sql)

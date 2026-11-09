@@ -401,6 +401,10 @@ def test_timestamp_to_microseconds():
         (11 * 3600 + 11 * 60) * 1_000_000 + 615047
     )
 
+    assert _timestamp_to_microseconds("6254082: 08:30.471046-35") == (
+        (8 * 3600 + 30 * 60) * 1_000_000 + 471046
+    )
+
 
 def test_timestamp_to_microseconds_rejects_invalid_value():
     from incident_correlation import _timestamp_to_microseconds
