@@ -77,7 +77,8 @@ def extract_sql(raw_text: str) -> str | None:
 
         i += 1
 
-    sql = sql_text.strip()
+    # Удаляем номера строк технологического журнала: "6255219: "
+    sql = re.sub(r"(?m)^\s*\d+:\s?", "", sql_text).strip()
 
     if len(sql) >= 2 and sql[0] == sql[-1] and sql[0] in {"'", '"'}:
         sql = sql[1:-1]
@@ -318,3 +319,4 @@ def extract_sql_tables(sql: str) -> list[str]:
             tables.append(full_name)
 
     return tables
+
