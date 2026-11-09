@@ -551,3 +551,23 @@ def test_does_not_link_xlocktables_to_different_tlock_resource():
     result = build_incident_chain(events, error_index=2)
 
     assert result["diagnostic_links"] == []
+
+
+def test_keeps_events_between_previous_and_current_exception():
+    events = [
+        make_event(
+            "10:00:00.000-0,EXCP,1,level=ERROR," 'Usr="Иванов",process=123,OSThread=456'
+        ),
+        make_event(
+            "10:00:01.000-0,SDBL,2,level=INFO," 'Usr="Иванов",process=123,OSThread=456'
+        ),
+        make_event(
+            "10:00:02.000-0,EXCP,3,level=ERROR," 'Usr="Иванов",process=123,OSThread=456'
+        ),
+    ]
+
+    result = build_incident_chain(events, error_index=2)
+
+    assert len(result["before"]) == 1
+    assert result["before"][0]["event_type"] == "SDBL"
+    assert result["before"][0]["index"] == 1

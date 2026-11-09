@@ -395,7 +395,7 @@ def build_incident_chain(
         fields = get_correlation_fields(event)
 
         if event.event_type == "EXCP" and is_same_process_thread(anchor, fields):
-            start_index = error_index
+            start_index = index + 1
             break
 
     # Определяем правую границу: ближайшее следующее
