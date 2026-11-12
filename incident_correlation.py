@@ -36,6 +36,51 @@ def get_correlation_fields(event) -> dict:
     }
 
 
+def describe_related_context(anchor_context, related_events):
+    """Формирует пояснение по контекстам связанных событий."""
+
+    if anchor_context:
+        return None
+
+    contexts = [event["context"] for event in related_events if event.get("context")]
+
+    missing_count = len(related_events) - len(contexts)
+
+    if not contexts:
+        return "Контекст выполнения отсутствует или не определён."
+
+    unique_contexts = set(contexts)
+
+    if missing_count:
+        if len(unique_contexts) == 1:
+            return (
+                "Контекст исключения отсутствует. У части связанных событий "
+                "контекст выполнения не определён. У остальных обнаружен "
+                "одинаковый контекст выполнения: "
+                f"{contexts[0]}. Это указывает на общий сценарий выполнения, "
+                "но не доказывает причинную связь."
+            )
+
+        return (
+            "Контекст исключения отсутствует. У части связанных событий "
+            "контекст выполнения не определён. У остальных обнаружены "
+            "различные контексты выполнения."
+        )
+
+    if len(unique_contexts) == 1:
+        return (
+            "Контекст исключения отсутствует. У связанных событий "
+            "обнаружен одинаковый контекст выполнения: "
+            f"{contexts[0]}. Это указывает на общий сценарий выполнения, "
+            "но не доказывает причинную связь."
+        )
+
+    return (
+        "Контекст исключения отсутствует. У связанных событий "
+        "обнаружены различные контексты выполнения."
+    )
+
+
 def _timestamp_to_microseconds(timestamp: str) -> int | None:
     """Преобразует время события ТЖ в микросекунды от начала суток."""
 
@@ -108,7 +153,6 @@ def _extract_select_fields(sql: str) -> set[str]:
     return result
 
 
-
 def _extract_select_branches(sql: str) -> tuple:
     """Возвращает структуру каждой ветви SELECT с её таблицами и полями."""
 
@@ -125,10 +169,7 @@ def _extract_select_branches(sql: str) -> tuple:
             continue
 
         tables = tuple(
-            sorted(
-                _normalize_table_name(table)
-                for table in extract_sql_tables(branch)
-            )
+            sorted(_normalize_table_name(table) for table in extract_sql_tables(branch))
         )
         fields = tuple(sorted(_extract_select_fields(branch)))
 
@@ -137,6 +178,7 @@ def _extract_select_branches(sql: str) -> tuple:
 
     # Сортируем ветви, чтобы не зависеть от их порядка в SQL.
     return tuple(sorted(result))
+
 
 def find_sql_event_pairs(
     events,
@@ -489,6 +531,30 @@ def build_incident_chain(
         )
 
         if same_process and same_known_user and different_thread:
+            anchor_context = anchor["context"]
+            candidate_context = fields["context"]
+
+            if anchor_context and candidate_context:
+                if anchor_context == candidate_context:
+                    correlation_reason = (
+                        "Совпадают пользователь, процесс и контекст выполнения; "
+                        "событие зарегистрировано в другом потоке. "
+                        "Совпадение контекста является дополнительным признаком связи, "
+                        "но не доказывает причинность."
+                    )
+                else:
+                    correlation_reason = (
+                        "Совпадают пользователь и процесс, "
+                        "но контексты выполнения различаются; "
+                        "событие зарегистрировано в другом потоке."
+                    )
+            else:
+                correlation_reason = (
+                    "Совпадают пользователь и процесс; "
+                    "событие зарегистрировано в другом потоке. "
+                    "Контекст выполнения отсутствует или не определён."
+                )
+
             item = {
                 "index": index,
                 "timestamp": event.timestamp,
@@ -502,15 +568,18 @@ def build_incident_chain(
                 "context": fields["context"],
                 "user_relation": "same",
                 "is_error": False,
-                "correlation_reason": (
-                    "Совпадают пользователь и процесс; "
-                    "событие зарегистрировано в другом потоке."
-                ),
+                "correlation_reason": correlation_reason,
                 "correlation_strength": "weak",
             }
 
             item.update(extract_event_details(event))
             related_events.append(item)
+
+    # Формируем общее пояснение по контекстам всей группы связанных событий.
+    related_context_summary = describe_related_context(
+        anchor["context"],
+        related_events,
+    )
 
     related_before = [item for item in related_events if item["index"] < error_index]
 
@@ -528,6 +597,7 @@ def build_incident_chain(
         "before": [item for item in chain if item["index"] < error_index],
         "after": [item for item in chain if item["index"] > error_index],
         "related_events": related_events,
+        "related_context_summary": related_context_summary,
         "related_before": related_before,
         "related_after": related_after,
     }
@@ -769,59 +839,44 @@ def analyze_incident_evidence(chain: dict) -> dict:
         error_event is not None
         and error_event.get("exception_resource") == "DATAZONEOBJECTLOCKS"
     ):
-        extension_events = []
-        schema_storage_events = []
-        generation_events = []
-        local_schema_events = []
+        patterns = (
+            r"\b_?ExtensionsInfo(?:NGS)?\b",
+            r"\bSchemaStorage\b",
+            r"\bGET\s+NGENERATIONS\b",
+            r"\bschema\s+get\s+local\b",
+        )
 
-        for event in before:
-            sql = event.get("sql", "")
+        matched_events = []
+        last_index = -1
 
-            if not sql:
-                continue
-
-            if re.search(r"\b_?ExtensionsInfo(?:NGS)?\b", sql, re.IGNORECASE):
-                extension_events.append(event)
-
-            if re.search(r"\bSchemaStorage\b", sql, re.IGNORECASE):
-                schema_storage_events.append(event)
-
-            if re.search(r"\bGET\s+NGENERATIONS\b", sql, re.IGNORECASE):
-                generation_events.append(event)
-
-            if re.search(r"\bschema\s+get\s+local\b", sql, re.IGNORECASE):
-                local_schema_events.append(event)
-
-        if all(
-            (
-                extension_events,
-                schema_storage_events,
-                generation_events,
-                local_schema_events,
-            )
-        ):
-            matched_events = (
-                extension_events
-                + schema_storage_events
-                + generation_events
-                + local_schema_events
-                + [error_event]
+        for pattern in patterns:
+            event = next(
+                (
+                    item
+                    for item in before
+                    if item["index"] > last_index
+                    and re.search(pattern, item.get("sql", ""), re.IGNORECASE)
+                ),
+                None,
             )
 
-            # Убираем возможные дубли и сохраняем хронологию.
-            matched_events = sorted(
-                {event["index"]: event for event in matched_events}.values(),
-                key=lambda event: event["index"],
-            )
+            if event is None:
+                matched_events = []
+                break
 
+            matched_events.append(event)
+            last_index = event["index"]
+
+        if matched_events:
+            matched_events.append(error_event)
             datazone_pattern_found = True
 
             findings.append(
                 {
                     "code": "DATAZONEOBJECTLOCKS_LOCK_FAILURE",
                     "title": (
-                        "Перед исключением обнаружена последовательность "
-                        "операций получения локальной схемы"
+                        "Перед исключением обнаружены SQL-операции "
+                        "получения локальной схемы в ожидаемом порядке"
                     ),
                     "count": len(matched_events),
                     "confidence": "Наблюдаемая закономерность",

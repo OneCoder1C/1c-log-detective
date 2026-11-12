@@ -1,5 +1,6 @@
 """Генерация автономного HTML-отчёта по инциденту."""
 
+import base64
 import json
 from pathlib import Path
 
@@ -12,6 +13,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>1C Log Detective — Отчёт об инциденте</title>
+<link rel="icon" type="image/png" href="__FAVICON__">
 
 <style>
 :root {
@@ -976,18 +978,13 @@ html[data-theme="light"] .theme-toggle {
 }
 
 .brand-mark {
-    display: grid;
-    place-items: center;
+    display: block;
     flex: 0 0 48px;
     width: 48px;
     height: 48px;
+    object-fit: contain;
     border-radius: 13px;
-    background: linear-gradient(135deg, #2878bd, #55a5e8);
-    color: #ffffff;
-    font-size: 19px;
-    font-weight: 800;
-    letter-spacing: -1px;
-    box-shadow: 0 5px 18px rgba(45, 125, 195, .25);
+    box-shadow: 0 5px 18px rgba(8, 169, 244, .20);
 }
 
 .brand-text h1 {
@@ -1111,6 +1108,449 @@ html[data-theme="light"] .incident-counter {
     }
 }
 
+
+/* ===== Адаптивное оформление 1C Log Detective ===== */
+
+.app-header {
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.brand {
+    flex: 1 1 260px;
+    min-width: 240px;
+}
+
+.header-actions {
+    flex: 1 1 520px;
+    min-width: 0;
+    justify-content: flex-end;
+}
+
+.header-selector {
+    min-width: 0;
+}
+
+.header-selector select {
+    max-width: min(300px, 100%);
+}
+
+.summary {
+    grid-template-columns: repeat(
+        auto-fit,
+        minmax(min(100%, 170px), 1fr)
+    );
+}
+
+.metric {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+#related-context-summary {
+    margin-bottom: 12px;
+}
+
+#related-events {
+    display: grid;
+    grid-template-columns: repeat(
+        auto-fit,
+        minmax(min(100%, 360px), 1fr)
+    );
+    gap: 12px;
+    align-items: start;
+}
+
+#related-events .event {
+    min-width: 0;
+    margin: 0;
+}
+
+.event-header {
+    min-width: 0;
+}
+
+@media (max-width: 760px) {
+    .app-header {
+        align-items: stretch;
+    }
+
+    .brand {
+        flex: 1 1 100%;
+    }
+
+    .header-actions {
+        flex: 1 1 100%;
+        justify-content: flex-start;
+    }
+
+    .header-selector select {
+        max-width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .app-header {
+        padding: 15px;
+        gap: 14px;
+    }
+
+    .brand {
+        min-width: 0;
+    }
+
+    .header-actions > * {
+        max-width: 100%;
+    }
+
+    .header-selector {
+        flex: 1 1 100%;
+    }
+
+    .header-selector select {
+        min-width: 0;
+        flex: 1 1 100%;
+    }
+}
+
+
+/* ===== Шапка: единая линия на широком экране ===== */
+
+.app-header {
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 24px;
+}
+
+.brand {
+    flex: 1 1 auto;
+    min-width: 260px;
+}
+
+.header-actions {
+    flex: 0 1 auto;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    min-width: 0;
+}
+
+.header-actions > * {
+    flex: 0 0 auto;
+}
+
+.header-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.header-selector select {
+    width: 360px;
+    max-width: 360px;
+}
+
+.incident-counter,
+#theme-toggle,
+#export-bug-report {
+    white-space: nowrap;
+}
+
+@media (max-width: 1250px) {
+    .app-header {
+        flex-wrap: wrap;
+    }
+
+    .brand {
+        flex: 1 1 100%;
+    }
+
+    .header-actions {
+        flex: 1 1 100%;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 760px) {
+    .app-header {
+        align-items: stretch;
+    }
+
+    .header-actions {
+        flex: 1 1 100%;
+        justify-content: flex-start;
+    }
+
+    .header-selector {
+        flex: 1 1 100%;
+        flex-wrap: wrap;
+    }
+
+    .header-selector select {
+        width: 100%;
+        max-width: 100%;
+    }
+}
+
+
+/* ===== Компактные фильтры временной шкалы ===== */
+
+.timeline-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin: 12px 0 16px;
+}
+
+.timeline-controls .filter-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
+}
+
+.timeline-controls .event-filter-chips {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.timeline-controls .event-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-height: 40px;
+    padding: 8px 14px;
+    white-space: nowrap;
+    border-radius: 9px;
+}
+
+.timeline-controls .event-filter-chip[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: var(--panel2);
+    color: var(--text);
+}
+
+.timeline-controls .event-filter-chip-count {
+    font-weight: 700;
+}
+
+.timeline-controls .filter-row-search {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.3fr) minmax(190px, 1fr);
+    max-width: 760px;
+}
+
+.timeline-controls .filter-row-search input,
+.timeline-controls .filter-row-search select {
+    width: 100%;
+    min-width: 0;
+    height: 42px;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+.timeline-controls .filter-row-options {
+    justify-content: flex-start;
+    gap: 8px;
+}
+
+.timeline-controls .filter-toggle {
+    display: inline-flex;
+    flex: 0 1 auto;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 9px;
+    width: auto;
+    min-height: 40px;
+    padding: 8px 13px;
+    white-space: nowrap;
+    box-sizing: border-box;
+}
+
+.timeline-controls .filter-toggle input[type="checkbox"] {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+}
+
+@media (max-width: 650px) {
+    .timeline-controls .filter-row-search {
+        grid-template-columns: minmax(0, 1fr);
+        max-width: none;
+    }
+
+    .timeline-controls .filter-toggle {
+        white-space: normal;
+    }
+}
+\n
+/* ===== Исправление компактных переключателей ===== */
+
+.timeline-controls .filter-row-options {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+}
+
+.timeline-controls .filter-row-options .filter-toggle {
+    display: inline-flex;
+    flex: 0 0 auto;
+    width: fit-content;
+    min-width: 0;
+    min-height: 38px;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 9px;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--panel);
+    color: var(--muted);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background .15s, border-color .15s, color .15s;
+}
+
+.timeline-controls .filter-row-options .filter-toggle:hover {
+    background: var(--panel2);
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+.timeline-controls .filter-row-options .filter-toggle input[type="checkbox"] {
+    appearance: auto;
+    -webkit-appearance: checkbox;
+    display: inline-block;
+    flex: 0 0 16px;
+    width: 16px !important;
+    min-width: 16px !important;
+    max-width: 16px !important;
+    height: 16px !important;
+    min-height: 16px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+@media (max-width: 650px) {
+    .timeline-controls .filter-row-options .filter-toggle {
+        white-space: normal;
+    }
+}
+
+
+/* ===== Обновлённые карточки статистики ===== */
+
+#summary {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 14px;
+    margin: 18px 0 24px;
+    align-items: stretch;
+}
+
+#summary .metric {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 7px;
+    min-width: 0;
+    min-height: 108px;
+    padding: 18px 20px;
+    overflow: hidden;
+    background: linear-gradient(145deg, var(--panel2), var(--panel));
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    transition: transform .18s ease, border-color .18s ease,
+                box-shadow .18s ease;
+}
+
+#summary .metric::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--metric-accent, var(--accent));
+    opacity: .9;
+}
+
+#summary .metric:nth-child(1) { --metric-accent: #08a9f4; }
+#summary .metric:nth-child(2) { --metric-accent: #36d0ff; }
+#summary .metric:nth-child(3) { --metric-accent: #36b98a; }
+#summary .metric:nth-child(4) { --metric-accent: #a78bfa; }
+#summary .metric:nth-child(5) { --metric-accent: #ff9d00; }
+
+#summary .metric:hover {
+    transform: translateY(-3px);
+    border-color: var(--metric-accent);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, .16);
+}
+
+#summary .metric strong {
+    display: block;
+    color: var(--metric-accent, var(--accent));
+    font-size: 32px;
+    font-weight: 750;
+    line-height: 1.1;
+    letter-spacing: -.5px;
+    font-variant-numeric: tabular-nums;
+}
+
+#summary .metric span {
+    display: block;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.35;
+    font-weight: 500;
+}
+
+@media (max-width: 1050px) {
+    #summary {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 650px) {
+    #summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    #summary .metric {
+        min-height: 92px;
+        padding: 15px;
+    }
+
+    #summary .metric strong {
+        font-size: 28px;
+    }
+}
+
+@media (max-width: 380px) {
+    #summary {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
 </style>
 
 </head>
@@ -1118,7 +1558,7 @@ html[data-theme="light"] .incident-counter {
 <main>
 <header class="app-header">
     <div class="brand">
-        <div class="brand-mark">1C</div>
+        <img class="brand-mark" src="__BRAND_LOGO__" alt="Логотип 1C Log Detective">
         <div class="brand-text">
             <h1>1C Log Detective</h1>
             <div class="subtitle">Расследование технологического журнала 1С</div>
@@ -1207,6 +1647,7 @@ html[data-theme="light"] .incident-counter {
 <div id="after" class="lane"></div>
 
 <h2>События других потоков</h2>
+<div id="related-context-summary"></div>
 <div id="related-events"></div>
 
 <h2>Диагностические признаки</h2>
@@ -1354,6 +1795,14 @@ function buildBugReportMarkdown() {
         `## 6. События других потоков (${relatedEvents.length})`,
         ""
     );
+
+    if (current.related_context_summary) {
+        lines.push(
+            "**Общий контекст группы:**",
+            current.related_context_summary,
+            ""
+        );
+    }
 
     if (relatedEvents.length) {
         relatedEvents.forEach(event => addEvent(event, true));
@@ -1591,6 +2040,22 @@ function renderEvents(targetId, events) {
     const target = document.getElementById(targetId);
     clear(target);
 
+    if (targetId === "related-events") {
+        const summaryTarget = document.getElementById(
+            "related-context-summary"
+        );
+        clear(summaryTarget);
+
+        const currentData = getCurrentData();
+        const summary = currentData.related_context_summary;
+
+        if (summary) {
+            summaryTarget.append(
+                node("div", "meta", "Общий контекст группы: " + summary)
+            );
+        }
+    }
+
     if (!events.length) {
         target.append(node("div", "empty", "Событий нет."));
         return;
@@ -1610,14 +2075,9 @@ function renderEvents(targetId, events) {
     for (const event of events) {
         const card = renderEvent(event);
 
-        if (targetId === "related-events") {
+        if (targetId === "related-events" && event.correlation_reason) {
             card.append(
-                node(
-                    "div",
-                    "meta",
-                    "Основание: совпадают пользователь и процесс; " +
-                    "поток отличается от потока исключения."
-                )
+                node("div", "meta", "Основание: " + event.correlation_reason)
             );
         }
 
@@ -2687,7 +3147,28 @@ def generate_html_report(analysis_result: dict, output_path: str | Path) -> Path
         .replace("\u2029", "\\u2029")
     )
 
-    html = HTML_TEMPLATE.replace("__REPORT_DATA__", json_data)
+    brand_dir = Path(__file__).resolve().parent.parent / "assets" / "brand"
+
+    logo_data = base64.b64encode(
+        (brand_dir / "logo-symbol.svg").read_bytes()
+    ).decode("ascii")
+
+    favicon_data = base64.b64encode(
+        (brand_dir / "favicon-32.png").read_bytes()
+    ).decode("ascii")
+
+    html = (
+        HTML_TEMPLATE
+        .replace("__REPORT_DATA__", json_data)
+        .replace(
+            "__BRAND_LOGO__",
+            f"data:image/svg+xml;base64,{logo_data}",
+        )
+        .replace(
+            "__FAVICON__",
+            f"data:image/png;base64,{favicon_data}",
+        )
+    )
 
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)

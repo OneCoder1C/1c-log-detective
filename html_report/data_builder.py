@@ -323,6 +323,7 @@ def build_html_report_data(analysis_result: dict) -> dict:
                 "after": [],
             },
             "related_events": [],
+            "related_context_summary": None,
             "findings": [],
             "related_findings": [],
             "incidents": [],
@@ -424,6 +425,7 @@ def build_html_report_data(analysis_result: dict) -> dict:
             "after": after,
         },
         "related_events": related_events,
+        "related_context_summary": chain.get("related_context_summary"),
         "findings": findings,
         "related_findings": related_findings,
     }

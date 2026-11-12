@@ -36,6 +36,8 @@ def analysis_result():
         "timestamp": "2026-10-26 09:16:06",
         "event_type": "SDBL",
         "thread": "200",
+        "correlation_reason": "Совпадают пользователь и процесс, но отличается поток.",
+        "correlation_strength": "weak",
     }
 
     return {
@@ -50,6 +52,9 @@ def analysis_result():
             "before": [before_event],
             "after": [after_event],
             "related_events": [related_event],
+            "related_context_summary": (
+                "У связанных событий обнаружены различные контексты выполнения."
+            ),
         },
         "evidence": {
             "findings": [{"code": "SDBL_BEFORE_EXCP"}],
@@ -72,6 +77,16 @@ def test_keeps_related_events_separate(analysis_result):
 
     assert len(result["related_events"]) == 1
     assert result["related_events"][0]["thread"] == "200"
+
+    assert (
+        result["related_events"][0]["correlation_reason"]
+        == "Совпадают пользователь и процесс, но отличается поток."
+    )
+    assert result["related_events"][0]["correlation_strength"] == "weak"
+
+    assert result["related_context_summary"] == (
+        "У связанных событий обнаружены различные контексты выполнения."
+    )
 
 
 def test_builds_summary(analysis_result):

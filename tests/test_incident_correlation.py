@@ -301,9 +301,133 @@ def test_related_events_include_correlation_explanation():
     related = result["related_events"][0]
 
     assert related["correlation_strength"] == "weak"
-    assert related["correlation_reason"] == (
-        "Совпадают пользователь и процесс; " "событие зарегистрировано в другом потоке."
-    )
+    assert "Совпадают пользователь и процесс" in related["correlation_reason"]
+    assert "другом потоке" in related["correlation_reason"]
+    assert "Контекст выполнения отсутствует" in related["correlation_reason"]
+
+
+def test_related_events_with_matching_context():
+    events = [
+        make_event(
+            "10:00:00.000-0,TLOCK,1,level=INFO,"
+            'Usr="Иванов",process=123,OSThread=789,'
+            'Context="Документ.Заказ.Форма.Форма"'
+        ),
+        make_event(
+            "10:00:01.000-0,EXCP,2,level=ERROR,"
+            'Usr="Иванов",process=123,OSThread=456,'
+            'Context="Документ.Заказ.Форма.Форма"'
+        ),
+    ]
+
+    result = build_incident_chain(events, error_index=1)
+    related = result["related_events"][0]
+
+    assert related["correlation_strength"] == "weak"
+    assert "контекст выполнения" in related["correlation_reason"]
+    assert "не доказывает причинность" in related["correlation_reason"]
+
+
+def test_related_events_with_different_context():
+    events = [
+        make_event(
+            "10:00:00.000-0,TLOCK,1,level=INFO,"
+            'Usr="Иванов",process=123,OSThread=789,'
+            'Context="Документ.Заказ.Форма.Форма"'
+        ),
+        make_event(
+            "10:00:01.000-0,EXCP,2,level=ERROR,"
+            'Usr="Иванов",process=123,OSThread=456,'
+            'Context="Справочник.Номенклатура.Форма.Форма"'
+        ),
+    ]
+
+    result = build_incident_chain(events, error_index=1)
+    related = result["related_events"][0]
+
+    assert related["correlation_strength"] == "weak"
+    assert "контексты выполнения различаются" in related["correlation_reason"]
+
+
+def test_related_events_without_context():
+    events = [
+        make_event(
+            "10:00:00.000-0,TLOCK,1,level=INFO," 'Usr="Иванов",process=123,OSThread=789'
+        ),
+        make_event(
+            "10:00:01.000-0,EXCP,2,level=ERROR," 'Usr="Иванов",process=123,OSThread=456'
+        ),
+    ]
+
+    result = build_incident_chain(events, error_index=1)
+    related = result["related_events"][0]
+
+    assert related["correlation_strength"] == "weak"
+    assert "Контекст выполнения отсутствует" in related["correlation_reason"]
+
+
+def test_related_events_with_partially_missing_context():
+    events = [
+        make_event(
+            "10:00:00.000-0,TLOCK,1,level=INFO,"
+            'Usr="Иванов",process=123,OSThread=789,'
+            'Context="Документ.Заказ.Форма.Форма"'
+        ),
+        make_event(
+            "10:00:00.500-0,DBV8DBEng,2,level=INFO,"
+            'Usr="Иванов",process=123,OSThread=790'
+        ),
+        make_event(
+            "10:00:01.000-0,EXCP,3,level=ERROR," 'Usr="Иванов",process=123,OSThread=456'
+        ),
+    ]
+
+    result = build_incident_chain(events, error_index=2)
+
+    assert len(result["related_events"]) == 2
+
+    reason = result["related_events"][0]["correlation_reason"]
+    summary = result["related_context_summary"]
+
+    assert "Контекст выполнения отсутствует или не определён" in reason
+    assert "части связанных событий" in summary
+    assert "одинаковый контекст выполнения" in summary
+    assert "не доказывает причинную связь" in summary
+    assert "части связанных событий" not in reason
+
+
+def test_related_events_with_partially_missing_and_different_contexts():
+    events = [
+        make_event(
+            "10:00:00.000-0,TLOCK,1,level=INFO,"
+            'Usr="Иванов",process=123,OSThread=789,'
+            'Context="Документ.Заказ.Форма.Форма"'
+        ),
+        make_event(
+            "10:00:00.500-0,DBV8DBEng,2,level=INFO,"
+            'Usr="Иванов",process=123,OSThread=790,'
+            'Context="Справочник.Номенклатура.Форма.Форма"'
+        ),
+        make_event(
+            "10:00:00.700-0,SDBL,3,level=INFO," 'Usr="Иванов",process=123,OSThread=791'
+        ),
+        make_event(
+            "10:00:01.000-0,EXCP,4,level=ERROR," 'Usr="Иванов",process=123,OSThread=456'
+        ),
+    ]
+
+    result = build_incident_chain(events, error_index=3)
+
+    assert len(result["related_events"]) == 3
+
+    reason = result["related_events"][0]["correlation_reason"]
+    summary = result["related_context_summary"]
+
+    assert "Контекст выполнения отсутствует или не определён" in reason
+    assert "части связанных событий" in summary
+    assert "различные контексты выполнения" in summary
+    assert "одинаковый контекст выполнения" not in summary
+    assert "части связанных событий" not in reason
 
 
 def test_extracts_exception_metadata_from_excp_event():
