@@ -1,6 +1,6 @@
 # 1C Log Detective
 
-![1C Log Detective](assets/brand/github-readme-banner.svg)
+![1C Log Detective](assets/brand/github-readme-banner.png)
 
 **1C Log Detective** — инструмент для анализа технологического журнала 1С:Предприятие 8.3. Помогает выявлять ошибки, исследовать блокировки, анализировать SQL-запросы и восстанавливать последовательность событий вокруг инцидента.
 
